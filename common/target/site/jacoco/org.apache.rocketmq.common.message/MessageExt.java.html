@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MessageExt.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.message</a> &gt; <span class="el_source">MessageExt.java</span></div><h1>MessageExt.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.common.message;
+
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+
+public class MessageExt extends Message {
+    private static final long serialVersionUID = 5720810158625748049L;
+
+    private int queueId;
+
+    private int storeSize;
+
+    private long queueOffset;
+    private int sysFlag;
+    private long bornTimestamp;
+    private SocketAddress bornHost;
+
+    private long storeTimestamp;
+    private SocketAddress storeHost;
+    private String msgId;
+    private long commitLogOffset;
+    private int bodyCRC;
+    private int reconsumeTimes;
+
+    private long preparedTransactionOffset;
+
+<span class="nc" id="L46">    public MessageExt() {</span>
+<span class="nc" id="L47">    }</span>
+
+    public MessageExt(int queueId, long bornTimestamp, SocketAddress bornHost, long storeTimestamp,
+<span class="nc" id="L50">        SocketAddress storeHost, String msgId) {</span>
+<span class="nc" id="L51">        this.queueId = queueId;</span>
+<span class="nc" id="L52">        this.bornTimestamp = bornTimestamp;</span>
+<span class="nc" id="L53">        this.bornHost = bornHost;</span>
+<span class="nc" id="L54">        this.storeTimestamp = storeTimestamp;</span>
+<span class="nc" id="L55">        this.storeHost = storeHost;</span>
+<span class="nc" id="L56">        this.msgId = msgId;</span>
+<span class="nc" id="L57">    }</span>
+
+    public static TopicFilterType parseTopicFilterType(final int sysFlag) {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if ((sysFlag &amp; MessageSysFlag.MULTI_TAGS_FLAG) == MessageSysFlag.MULTI_TAGS_FLAG) {</span>
+<span class="nc" id="L61">            return TopicFilterType.MULTI_TAG;</span>
+        }
+
+<span class="nc" id="L64">        return TopicFilterType.SINGLE_TAG;</span>
+    }
+
+    private static ByteBuffer socketAddress2ByteBuffer(final SocketAddress socketAddress, final ByteBuffer byteBuffer) {
+<span class="nc" id="L68">        InetSocketAddress inetSocketAddress = (InetSocketAddress) socketAddress;</span>
+<span class="nc" id="L69">        byteBuffer.put(inetSocketAddress.getAddress().getAddress(), 0, 4);</span>
+<span class="nc" id="L70">        byteBuffer.putInt(inetSocketAddress.getPort());</span>
+<span class="nc" id="L71">        byteBuffer.flip();</span>
+<span class="nc" id="L72">        return byteBuffer;</span>
+    }
+
+    public static ByteBuffer socketAddress2ByteBuffer(SocketAddress socketAddress) {
+<span class="nc" id="L76">        ByteBuffer byteBuffer = ByteBuffer.allocate(8);</span>
+<span class="nc" id="L77">        return socketAddress2ByteBuffer(socketAddress, byteBuffer);</span>
+    }
+
+    public ByteBuffer getBornHostBytes() {
+<span class="nc" id="L81">        return socketAddress2ByteBuffer(this.bornHost);</span>
+    }
+
+    public ByteBuffer getBornHostBytes(ByteBuffer byteBuffer) {
+<span class="nc" id="L85">        return socketAddress2ByteBuffer(this.bornHost, byteBuffer);</span>
+    }
+
+    public ByteBuffer getStoreHostBytes() {
+<span class="nc" id="L89">        return socketAddress2ByteBuffer(this.storeHost);</span>
+    }
+
+    public ByteBuffer getStoreHostBytes(ByteBuffer byteBuffer) {
+<span class="nc" id="L93">        return socketAddress2ByteBuffer(this.storeHost, byteBuffer);</span>
+    }
+
+    public int getQueueId() {
+<span class="nc" id="L97">        return queueId;</span>
+    }
+
+    public void setQueueId(int queueId) {
+<span class="nc" id="L101">        this.queueId = queueId;</span>
+<span class="nc" id="L102">    }</span>
+
+    public long getBornTimestamp() {
+<span class="nc" id="L105">        return bornTimestamp;</span>
+    }
+
+    public void setBornTimestamp(long bornTimestamp) {
+<span class="nc" id="L109">        this.bornTimestamp = bornTimestamp;</span>
+<span class="nc" id="L110">    }</span>
+
+    public SocketAddress getBornHost() {
+<span class="nc" id="L113">        return bornHost;</span>
+    }
+
+    public void setBornHost(SocketAddress bornHost) {
+<span class="nc" id="L117">        this.bornHost = bornHost;</span>
+<span class="nc" id="L118">    }</span>
+
+    public String getBornHostString() {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (this.bornHost != null) {</span>
+<span class="nc" id="L122">            InetSocketAddress inetSocketAddress = (InetSocketAddress) this.bornHost;</span>
+<span class="nc" id="L123">            return inetSocketAddress.getAddress().getHostAddress();</span>
+        }
+
+<span class="nc" id="L126">        return null;</span>
+    }
+
+    public String getBornHostNameString() {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (this.bornHost != null) {</span>
+<span class="nc" id="L131">            InetSocketAddress inetSocketAddress = (InetSocketAddress) this.bornHost;</span>
+<span class="nc" id="L132">            return inetSocketAddress.getAddress().getHostName();</span>
+        }
+
+<span class="nc" id="L135">        return null;</span>
+    }
+
+    public long getStoreTimestamp() {
+<span class="nc" id="L139">        return storeTimestamp;</span>
+    }
+
+    public void setStoreTimestamp(long storeTimestamp) {
+<span class="nc" id="L143">        this.storeTimestamp = storeTimestamp;</span>
+<span class="nc" id="L144">    }</span>
+
+    public SocketAddress getStoreHost() {
+<span class="nc" id="L147">        return storeHost;</span>
+    }
+
+    public void setStoreHost(SocketAddress storeHost) {
+<span class="nc" id="L151">        this.storeHost = storeHost;</span>
+<span class="nc" id="L152">    }</span>
+
+    public String getMsgId() {
+<span class="nc" id="L155">        return msgId;</span>
+    }
+
+    public void setMsgId(String msgId) {
+<span class="nc" id="L159">        this.msgId = msgId;</span>
+<span class="nc" id="L160">    }</span>
+
+    public int getSysFlag() {
+<span class="nc" id="L163">        return sysFlag;</span>
+    }
+
+    public void setSysFlag(int sysFlag) {
+<span class="nc" id="L167">        this.sysFlag = sysFlag;</span>
+<span class="nc" id="L168">    }</span>
+
+    public int getBodyCRC() {
+<span class="nc" id="L171">        return bodyCRC;</span>
+    }
+
+    public void setBodyCRC(int bodyCRC) {
+<span class="nc" id="L175">        this.bodyCRC = bodyCRC;</span>
+<span class="nc" id="L176">    }</span>
+
+    public long getQueueOffset() {
+<span class="nc" id="L179">        return queueOffset;</span>
+    }
+
+    public void setQueueOffset(long queueOffset) {
+<span class="nc" id="L183">        this.queueOffset = queueOffset;</span>
+<span class="nc" id="L184">    }</span>
+
+    public long getCommitLogOffset() {
+<span class="nc" id="L187">        return commitLogOffset;</span>
+    }
+
+    public void setCommitLogOffset(long physicOffset) {
+<span class="nc" id="L191">        this.commitLogOffset = physicOffset;</span>
+<span class="nc" id="L192">    }</span>
+
+    public int getStoreSize() {
+<span class="nc" id="L195">        return storeSize;</span>
+    }
+
+    public void setStoreSize(int storeSize) {
+<span class="nc" id="L199">        this.storeSize = storeSize;</span>
+<span class="nc" id="L200">    }</span>
+
+    public int getReconsumeTimes() {
+<span class="nc" id="L203">        return reconsumeTimes;</span>
+    }
+
+    public void setReconsumeTimes(int reconsumeTimes) {
+<span class="nc" id="L207">        this.reconsumeTimes = reconsumeTimes;</span>
+<span class="nc" id="L208">    }</span>
+
+    public long getPreparedTransactionOffset() {
+<span class="nc" id="L211">        return preparedTransactionOffset;</span>
+    }
+
+    public void setPreparedTransactionOffset(long preparedTransactionOffset) {
+<span class="nc" id="L215">        this.preparedTransactionOffset = preparedTransactionOffset;</span>
+<span class="nc" id="L216">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L220">        return &quot;MessageExt [queueId=&quot; + queueId + &quot;, storeSize=&quot; + storeSize + &quot;, queueOffset=&quot; + queueOffset</span>
+            + &quot;, sysFlag=&quot; + sysFlag + &quot;, bornTimestamp=&quot; + bornTimestamp + &quot;, bornHost=&quot; + bornHost
+            + &quot;, storeTimestamp=&quot; + storeTimestamp + &quot;, storeHost=&quot; + storeHost + &quot;, msgId=&quot; + msgId
+            + &quot;, commitLogOffset=&quot; + commitLogOffset + &quot;, bodyCRC=&quot; + bodyCRC + &quot;, reconsumeTimes=&quot;
+            + reconsumeTimes + &quot;, preparedTransactionOffset=&quot; + preparedTransactionOffset
+<span class="nc" id="L225">            + &quot;, toString()=&quot; + super.toString() + &quot;]&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

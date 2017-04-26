@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClusterTestRequestProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-namesrv 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.namesrv.processor</a> &gt; <span class="el_source">ClusterTestRequestProcessor.java</span></div><h1>ClusterTestRequestProcessor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.namesrv.processor;
+
+import io.netty.channel.ChannelHandlerContext;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.namesrv.NamesrvUtil;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
+import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.namesrv.NamesrvController;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class ClusterTestRequestProcessor extends DefaultRequestProcessor {
+<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);</span>
+    private final DefaultMQAdminExt adminExt;
+    private final String productEnvName;
+
+    public ClusterTestRequestProcessor(NamesrvController namesrvController, String productEnvName) {
+<span class="fc" id="L40">        super(namesrvController);</span>
+<span class="fc" id="L41">        this.productEnvName = productEnvName;</span>
+<span class="fc" id="L42">        adminExt = new DefaultMQAdminExt();</span>
+<span class="fc" id="L43">        adminExt.setInstanceName(&quot;CLUSTER_TEST_NS_INS_&quot; + productEnvName);</span>
+<span class="fc" id="L44">        adminExt.setUnitName(productEnvName);</span>
+        try {
+<span class="fc" id="L46">            adminExt.start();</span>
+<span class="nc" id="L47">        } catch (MQClientException e) {</span>
+<span class="nc" id="L48">            e.printStackTrace();</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="fc" id="L54">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="fc" id="L55">        final GetRouteInfoRequestHeader requestHeader =</span>
+<span class="fc" id="L56">            (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);</span>
+
+<span class="fc" id="L58">        TopicRouteData topicRouteData = this.namesrvController.getRouteInfoManager().pickupTopicRouteData(requestHeader.getTopic());</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (topicRouteData != null) {</span>
+<span class="nc" id="L60">            String orderTopicConf =</span>
+<span class="nc" id="L61">                this.namesrvController.getKvConfigManager().getKVConfig(NamesrvUtil.NAMESPACE_ORDER_TOPIC_CONFIG,</span>
+<span class="nc" id="L62">                    requestHeader.getTopic());</span>
+<span class="nc" id="L63">            topicRouteData.setOrderTopicConf(orderTopicConf);</span>
+<span class="nc" id="L64">        } else {</span>
+            try {
+<span class="nc" id="L66">                topicRouteData = adminExt.examineTopicRouteInfo(requestHeader.getTopic());</span>
+<span class="fc" id="L67">            } catch (Exception e) {</span>
+<span class="fc" id="L68">                log.info(&quot;get route info by topic from product environment failed. envName={},&quot;, productEnvName);</span>
+<span class="nc" id="L69">            }</span>
+        }
+
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (topicRouteData != null) {</span>
+<span class="nc" id="L73">            byte[] content = topicRouteData.encode();</span>
+<span class="nc" id="L74">            response.setBody(content);</span>
+<span class="nc" id="L75">            response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L76">            response.setRemark(null);</span>
+<span class="nc" id="L77">            return response;</span>
+        }
+
+<span class="fc" id="L80">        response.setCode(ResponseCode.TOPIC_NOT_EXIST);</span>
+<span class="fc" id="L81">        response.setRemark(&quot;No topic route info in name server for the topic: &quot; + requestHeader.getTopic()</span>
+<span class="fc" id="L82">            + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));</span>
+<span class="fc" id="L83">        return response;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

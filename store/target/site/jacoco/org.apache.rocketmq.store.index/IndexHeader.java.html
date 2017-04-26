@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexHeader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store.index</a> &gt; <span class="el_source">IndexHeader.java</span></div><h1>IndexHeader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store.index;
+
+import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+
+ *
+ *
+ */
+public class IndexHeader {
+    public static final int INDEX_HEADER_SIZE = 40;
+<span class="fc" id="L30">    private static int beginTimestampIndex = 0;</span>
+<span class="fc" id="L31">    private static int endTimestampIndex = 8;</span>
+<span class="fc" id="L32">    private static int beginPhyoffsetIndex = 16;</span>
+<span class="fc" id="L33">    private static int endPhyoffsetIndex = 24;</span>
+<span class="fc" id="L34">    private static int hashSlotcountIndex = 32;</span>
+<span class="fc" id="L35">    private static int indexCountIndex = 36;</span>
+    private final ByteBuffer byteBuffer;
+<span class="fc" id="L37">    private AtomicLong beginTimestamp = new AtomicLong(0);</span>
+<span class="fc" id="L38">    private AtomicLong endTimestamp = new AtomicLong(0);</span>
+<span class="fc" id="L39">    private AtomicLong beginPhyOffset = new AtomicLong(0);</span>
+<span class="fc" id="L40">    private AtomicLong endPhyOffset = new AtomicLong(0);</span>
+<span class="fc" id="L41">    private AtomicInteger hashSlotCount = new AtomicInteger(0);</span>
+
+<span class="fc" id="L43">    private AtomicInteger indexCount = new AtomicInteger(1);</span>
+
+<span class="fc" id="L45">    public IndexHeader(final ByteBuffer byteBuffer) {</span>
+<span class="fc" id="L46">        this.byteBuffer = byteBuffer;</span>
+<span class="fc" id="L47">    }</span>
+
+    public void load() {
+<span class="nc" id="L50">        this.beginTimestamp.set(byteBuffer.getLong(beginTimestampIndex));</span>
+<span class="nc" id="L51">        this.endTimestamp.set(byteBuffer.getLong(endTimestampIndex));</span>
+<span class="nc" id="L52">        this.beginPhyOffset.set(byteBuffer.getLong(beginPhyoffsetIndex));</span>
+<span class="nc" id="L53">        this.endPhyOffset.set(byteBuffer.getLong(endPhyoffsetIndex));</span>
+
+<span class="nc" id="L55">        this.hashSlotCount.set(byteBuffer.getInt(hashSlotcountIndex));</span>
+<span class="nc" id="L56">        this.indexCount.set(byteBuffer.getInt(indexCountIndex));</span>
+
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        if (this.indexCount.get() &lt;= 0) {</span>
+<span class="nc" id="L59">            this.indexCount.set(1);</span>
+        }
+<span class="nc" id="L61">    }</span>
+
+    public void updateByteBuffer() {
+<span class="nc" id="L64">        this.byteBuffer.putLong(beginTimestampIndex, this.beginTimestamp.get());</span>
+<span class="nc" id="L65">        this.byteBuffer.putLong(endTimestampIndex, this.endTimestamp.get());</span>
+<span class="nc" id="L66">        this.byteBuffer.putLong(beginPhyoffsetIndex, this.beginPhyOffset.get());</span>
+<span class="nc" id="L67">        this.byteBuffer.putLong(endPhyoffsetIndex, this.endPhyOffset.get());</span>
+<span class="nc" id="L68">        this.byteBuffer.putInt(hashSlotcountIndex, this.hashSlotCount.get());</span>
+<span class="nc" id="L69">        this.byteBuffer.putInt(indexCountIndex, this.indexCount.get());</span>
+<span class="nc" id="L70">    }</span>
+
+    public long getBeginTimestamp() {
+<span class="fc" id="L73">        return beginTimestamp.get();</span>
+    }
+
+    public void setBeginTimestamp(long beginTimestamp) {
+<span class="fc" id="L77">        this.beginTimestamp.set(beginTimestamp);</span>
+<span class="fc" id="L78">        this.byteBuffer.putLong(beginTimestampIndex, beginTimestamp);</span>
+<span class="fc" id="L79">    }</span>
+
+    public long getEndTimestamp() {
+<span class="nc" id="L82">        return endTimestamp.get();</span>
+    }
+
+    public void setEndTimestamp(long endTimestamp) {
+<span class="fc" id="L86">        this.endTimestamp.set(endTimestamp);</span>
+<span class="fc" id="L87">        this.byteBuffer.putLong(endTimestampIndex, endTimestamp);</span>
+<span class="fc" id="L88">    }</span>
+
+    public long getBeginPhyOffset() {
+<span class="nc" id="L91">        return beginPhyOffset.get();</span>
+    }
+
+    public void setBeginPhyOffset(long beginPhyOffset) {
+<span class="fc" id="L95">        this.beginPhyOffset.set(beginPhyOffset);</span>
+<span class="fc" id="L96">        this.byteBuffer.putLong(beginPhyoffsetIndex, beginPhyOffset);</span>
+<span class="fc" id="L97">    }</span>
+
+    public long getEndPhyOffset() {
+<span class="fc" id="L100">        return endPhyOffset.get();</span>
+    }
+
+    public void setEndPhyOffset(long endPhyOffset) {
+<span class="fc" id="L104">        this.endPhyOffset.set(endPhyOffset);</span>
+<span class="fc" id="L105">        this.byteBuffer.putLong(endPhyoffsetIndex, endPhyOffset);</span>
+<span class="fc" id="L106">    }</span>
+
+    public AtomicInteger getHashSlotCount() {
+<span class="nc" id="L109">        return hashSlotCount;</span>
+    }
+
+    public void incHashSlotCount() {
+<span class="fc" id="L113">        int value = this.hashSlotCount.incrementAndGet();</span>
+<span class="fc" id="L114">        this.byteBuffer.putInt(hashSlotcountIndex, value);</span>
+<span class="fc" id="L115">    }</span>
+
+    public int getIndexCount() {
+<span class="fc" id="L118">        return indexCount.get();</span>
+    }
+
+    public void incIndexCount() {
+<span class="fc" id="L122">        int value = this.indexCount.incrementAndGet();</span>
+<span class="fc" id="L123">        this.byteBuffer.putInt(indexCountIndex, value);</span>
+<span class="fc" id="L124">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

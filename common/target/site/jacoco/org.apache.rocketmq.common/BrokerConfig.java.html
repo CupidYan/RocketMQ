@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BrokerConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common</a> &gt; <span class="el_source">BrokerConfig.java</span></div><h1>BrokerConfig.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.common;
+
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import org.apache.rocketmq.common.annotation.ImportantField;
+import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+
+<span class="fc" id="L25">public class BrokerConfig {</span>
+<span class="fc" id="L26">    private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));</span>
+<span class="fc" id="L27">    @ImportantField</span>
+<span class="fc" id="L28">    private String namesrvAddr = System.getProperty(MixAll.NAMESRV_ADDR_PROPERTY, System.getenv(MixAll.NAMESRV_ADDR_ENV));</span>
+<span class="fc" id="L29">    @ImportantField</span>
+<span class="fc" id="L30">    private String brokerIP1 = RemotingUtil.getLocalAddress();</span>
+<span class="fc" id="L31">    private String brokerIP2 = RemotingUtil.getLocalAddress();</span>
+<span class="fc" id="L32">    @ImportantField</span>
+<span class="fc" id="L33">    private String brokerName = localHostName();</span>
+<span class="fc" id="L34">    @ImportantField</span>
+    private String brokerClusterName = &quot;DefaultCluster&quot;;
+<span class="fc" id="L36">    @ImportantField</span>
+    private long brokerId = MixAll.MASTER_ID;
+<span class="fc" id="L38">    private int brokerPermission = PermName.PERM_READ | PermName.PERM_WRITE;</span>
+<span class="fc" id="L39">    private int defaultTopicQueueNums = 8;</span>
+<span class="fc" id="L40">    @ImportantField</span>
+    private boolean autoCreateTopicEnable = true;
+
+<span class="fc" id="L43">    private boolean clusterTopicEnable = true;</span>
+
+<span class="fc" id="L45">    private boolean brokerTopicEnable = true;</span>
+<span class="fc" id="L46">    @ImportantField</span>
+    private boolean autoCreateSubscriptionGroup = true;
+<span class="fc" id="L48">    private String messageStorePlugIn = &quot;&quot;;</span>
+
+<span class="fc" id="L50">    private int sendMessageThreadPoolNums = 1; //16 + Runtime.getRuntime().availableProcessors() * 4;</span>
+<span class="fc" id="L51">    private int pullMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;</span>
+<span class="fc" id="L52">    private int adminBrokerThreadPoolNums = 16;</span>
+<span class="fc" id="L53">    private int clientManageThreadPoolNums = 32;</span>
+<span class="fc" id="L54">    private int consumerManageThreadPoolNums = 32;</span>
+
+<span class="fc" id="L56">    private int flushConsumerOffsetInterval = 1000 * 5;</span>
+
+<span class="fc" id="L58">    private int flushConsumerOffsetHistoryInterval = 1000 * 60;</span>
+
+<span class="fc" id="L60">    @ImportantField</span>
+    private boolean rejectTransactionMessage = false;
+<span class="fc" id="L62">    @ImportantField</span>
+    private boolean fetchNamesrvAddrByAddressServer = false;
+<span class="fc" id="L64">    private int sendThreadPoolQueueCapacity = 10000;</span>
+<span class="fc" id="L65">    private int pullThreadPoolQueueCapacity = 100000;</span>
+<span class="fc" id="L66">    private int clientManagerThreadPoolQueueCapacity = 1000000;</span>
+<span class="fc" id="L67">    private int consumerManagerThreadPoolQueueCapacity = 1000000;</span>
+
+<span class="fc" id="L69">    private int filterServerNums = 0;</span>
+
+<span class="fc" id="L71">    private boolean longPollingEnable = true;</span>
+
+<span class="fc" id="L73">    private long shortPollingTimeMills = 1000;</span>
+
+<span class="fc" id="L75">    private boolean notifyConsumerIdsChangedEnable = true;</span>
+
+<span class="fc" id="L77">    private boolean highSpeedMode = false;</span>
+
+<span class="fc" id="L79">    private boolean commercialEnable = true;</span>
+<span class="fc" id="L80">    private int commercialTimerCount = 1;</span>
+<span class="fc" id="L81">    private int commercialTransCount = 1;</span>
+<span class="fc" id="L82">    private int commercialBigCount = 1;</span>
+<span class="fc" id="L83">    private int commercialBaseCount = 1;</span>
+
+<span class="fc" id="L85">    private boolean transferMsgByHeap = true;</span>
+<span class="fc" id="L86">    private int maxDelayTime = 40;</span>
+
+<span class="fc" id="L88">    private String regionId = MixAll.DEFAULT_TRACE_REGION_ID;</span>
+<span class="fc" id="L89">    private int registerBrokerTimeoutMills = 6000;</span>
+
+<span class="fc" id="L91">    private boolean slaveReadEnable = false;</span>
+
+<span class="fc" id="L93">    private boolean disableConsumeIfConsumerReadSlowly = false;</span>
+<span class="fc" id="L94">    private long consumerFallbehindThreshold = 1024L * 1024 * 1024 * 16;</span>
+
+<span class="fc" id="L96">    private long waitTimeMillsInSendQueue = 200;</span>
+
+<span class="fc" id="L98">    private long startAcceptSendRequestTimeStamp = 0L;</span>
+
+<span class="fc" id="L100">    private boolean traceOn = true;</span>
+
+    public static String localHostName() {
+        try {
+<span class="fc" id="L104">            return InetAddress.getLocalHost().getHostName();</span>
+<span class="nc" id="L105">        } catch (UnknownHostException e) {</span>
+<span class="nc" id="L106">            e.printStackTrace();</span>
+        }
+
+<span class="nc" id="L109">        return &quot;DEFAULT_BROKER&quot;;</span>
+    }
+
+    public boolean isTraceOn() {
+<span class="nc" id="L113">        return traceOn;</span>
+    }
+
+    public void setTraceOn(final boolean traceOn) {
+<span class="nc" id="L117">        this.traceOn = traceOn;</span>
+<span class="nc" id="L118">    }</span>
+
+    public long getStartAcceptSendRequestTimeStamp() {
+<span class="nc" id="L121">        return startAcceptSendRequestTimeStamp;</span>
+    }
+
+    public void setStartAcceptSendRequestTimeStamp(final long startAcceptSendRequestTimeStamp) {
+<span class="nc" id="L125">        this.startAcceptSendRequestTimeStamp = startAcceptSendRequestTimeStamp;</span>
+<span class="nc" id="L126">    }</span>
+
+    public long getWaitTimeMillsInSendQueue() {
+<span class="nc" id="L129">        return waitTimeMillsInSendQueue;</span>
+    }
+
+    public void setWaitTimeMillsInSendQueue(final long waitTimeMillsInSendQueue) {
+<span class="nc" id="L133">        this.waitTimeMillsInSendQueue = waitTimeMillsInSendQueue;</span>
+<span class="nc" id="L134">    }</span>
+
+    public long getConsumerFallbehindThreshold() {
+<span class="fc" id="L137">        return consumerFallbehindThreshold;</span>
+    }
+
+    public void setConsumerFallbehindThreshold(final long consumerFallbehindThreshold) {
+<span class="nc" id="L141">        this.consumerFallbehindThreshold = consumerFallbehindThreshold;</span>
+<span class="nc" id="L142">    }</span>
+
+    public boolean isDisableConsumeIfConsumerReadSlowly() {
+<span class="nc" id="L145">        return disableConsumeIfConsumerReadSlowly;</span>
+    }
+
+    public void setDisableConsumeIfConsumerReadSlowly(final boolean disableConsumeIfConsumerReadSlowly) {
+<span class="nc" id="L149">        this.disableConsumeIfConsumerReadSlowly = disableConsumeIfConsumerReadSlowly;</span>
+<span class="nc" id="L150">    }</span>
+
+    public boolean isSlaveReadEnable() {
+<span class="nc" id="L153">        return slaveReadEnable;</span>
+    }
+
+    public void setSlaveReadEnable(final boolean slaveReadEnable) {
+<span class="nc" id="L157">        this.slaveReadEnable = slaveReadEnable;</span>
+<span class="nc" id="L158">    }</span>
+
+    public int getRegisterBrokerTimeoutMills() {
+<span class="nc" id="L161">        return registerBrokerTimeoutMills;</span>
+    }
+
+    public void setRegisterBrokerTimeoutMills(final int registerBrokerTimeoutMills) {
+<span class="nc" id="L165">        this.registerBrokerTimeoutMills = registerBrokerTimeoutMills;</span>
+<span class="nc" id="L166">    }</span>
+
+    public String getRegionId() {
+<span class="nc" id="L169">        return regionId;</span>
+    }
+
+    public void setRegionId(final String regionId) {
+<span class="nc" id="L173">        this.regionId = regionId;</span>
+<span class="nc" id="L174">    }</span>
+
+    public boolean isTransferMsgByHeap() {
+<span class="nc" id="L177">        return transferMsgByHeap;</span>
+    }
+
+    public void setTransferMsgByHeap(final boolean transferMsgByHeap) {
+<span class="nc" id="L181">        this.transferMsgByHeap = transferMsgByHeap;</span>
+<span class="nc" id="L182">    }</span>
+
+    public String getMessageStorePlugIn() {
+<span class="nc" id="L185">        return messageStorePlugIn;</span>
+    }
+
+    public void setMessageStorePlugIn(String messageStorePlugIn) {
+<span class="nc" id="L189">        this.messageStorePlugIn = messageStorePlugIn;</span>
+<span class="nc" id="L190">    }</span>
+
+    public boolean isHighSpeedMode() {
+<span class="nc" id="L193">        return highSpeedMode;</span>
+    }
+
+    public void setHighSpeedMode(final boolean highSpeedMode) {
+<span class="nc" id="L197">        this.highSpeedMode = highSpeedMode;</span>
+<span class="nc" id="L198">    }</span>
+
+    public String getRocketmqHome() {
+<span class="nc" id="L201">        return rocketmqHome;</span>
+    }
+
+    public void setRocketmqHome(String rocketmqHome) {
+<span class="nc" id="L205">        this.rocketmqHome = rocketmqHome;</span>
+<span class="nc" id="L206">    }</span>
+
+    public String getBrokerName() {
+<span class="nc" id="L209">        return brokerName;</span>
+    }
+
+    public void setBrokerName(String brokerName) {
+<span class="nc" id="L213">        this.brokerName = brokerName;</span>
+<span class="nc" id="L214">    }</span>
+
+    public int getBrokerPermission() {
+<span class="nc" id="L217">        return brokerPermission;</span>
+    }
+
+    public void setBrokerPermission(int brokerPermission) {
+<span class="nc" id="L221">        this.brokerPermission = brokerPermission;</span>
+<span class="nc" id="L222">    }</span>
+
+    public int getDefaultTopicQueueNums() {
+<span class="nc" id="L225">        return defaultTopicQueueNums;</span>
+    }
+
+    public void setDefaultTopicQueueNums(int defaultTopicQueueNums) {
+<span class="nc" id="L229">        this.defaultTopicQueueNums = defaultTopicQueueNums;</span>
+<span class="nc" id="L230">    }</span>
+
+    public boolean isAutoCreateTopicEnable() {
+<span class="nc" id="L233">        return autoCreateTopicEnable;</span>
+    }
+
+    public void setAutoCreateTopicEnable(boolean autoCreateTopic) {
+<span class="nc" id="L237">        this.autoCreateTopicEnable = autoCreateTopic;</span>
+<span class="nc" id="L238">    }</span>
+
+    public String getBrokerClusterName() {
+<span class="nc" id="L241">        return brokerClusterName;</span>
+    }
+
+    public void setBrokerClusterName(String brokerClusterName) {
+<span class="nc" id="L245">        this.brokerClusterName = brokerClusterName;</span>
+<span class="nc" id="L246">    }</span>
+
+    public String getBrokerIP1() {
+<span class="nc" id="L249">        return brokerIP1;</span>
+    }
+
+    public void setBrokerIP1(String brokerIP1) {
+<span class="nc" id="L253">        this.brokerIP1 = brokerIP1;</span>
+<span class="nc" id="L254">    }</span>
+
+    public String getBrokerIP2() {
+<span class="nc" id="L257">        return brokerIP2;</span>
+    }
+
+    public void setBrokerIP2(String brokerIP2) {
+<span class="nc" id="L261">        this.brokerIP2 = brokerIP2;</span>
+<span class="nc" id="L262">    }</span>
+
+    public int getSendMessageThreadPoolNums() {
+<span class="nc" id="L265">        return sendMessageThreadPoolNums;</span>
+    }
+
+    public void setSendMessageThreadPoolNums(int sendMessageThreadPoolNums) {
+<span class="nc" id="L269">        this.sendMessageThreadPoolNums = sendMessageThreadPoolNums;</span>
+<span class="nc" id="L270">    }</span>
+
+    public int getPullMessageThreadPoolNums() {
+<span class="nc" id="L273">        return pullMessageThreadPoolNums;</span>
+    }
+
+    public void setPullMessageThreadPoolNums(int pullMessageThreadPoolNums) {
+<span class="nc" id="L277">        this.pullMessageThreadPoolNums = pullMessageThreadPoolNums;</span>
+<span class="nc" id="L278">    }</span>
+
+    public int getAdminBrokerThreadPoolNums() {
+<span class="nc" id="L281">        return adminBrokerThreadPoolNums;</span>
+    }
+
+    public void setAdminBrokerThreadPoolNums(int adminBrokerThreadPoolNums) {
+<span class="nc" id="L285">        this.adminBrokerThreadPoolNums = adminBrokerThreadPoolNums;</span>
+<span class="nc" id="L286">    }</span>
+
+    public int getFlushConsumerOffsetInterval() {
+<span class="nc" id="L289">        return flushConsumerOffsetInterval;</span>
+    }
+
+    public void setFlushConsumerOffsetInterval(int flushConsumerOffsetInterval) {
+<span class="nc" id="L293">        this.flushConsumerOffsetInterval = flushConsumerOffsetInterval;</span>
+<span class="nc" id="L294">    }</span>
+
+    public int getFlushConsumerOffsetHistoryInterval() {
+<span class="nc" id="L297">        return flushConsumerOffsetHistoryInterval;</span>
+    }
+
+    public void setFlushConsumerOffsetHistoryInterval(int flushConsumerOffsetHistoryInterval) {
+<span class="nc" id="L301">        this.flushConsumerOffsetHistoryInterval = flushConsumerOffsetHistoryInterval;</span>
+<span class="nc" id="L302">    }</span>
+
+    public boolean isClusterTopicEnable() {
+<span class="nc" id="L305">        return clusterTopicEnable;</span>
+    }
+
+    public void setClusterTopicEnable(boolean clusterTopicEnable) {
+<span class="nc" id="L309">        this.clusterTopicEnable = clusterTopicEnable;</span>
+<span class="nc" id="L310">    }</span>
+
+    public String getNamesrvAddr() {
+<span class="nc" id="L313">        return namesrvAddr;</span>
+    }
+
+    public void setNamesrvAddr(String namesrvAddr) {
+<span class="nc" id="L317">        this.namesrvAddr = namesrvAddr;</span>
+<span class="nc" id="L318">    }</span>
+
+    public long getBrokerId() {
+<span class="nc" id="L321">        return brokerId;</span>
+    }
+
+    public void setBrokerId(long brokerId) {
+<span class="nc" id="L325">        this.brokerId = brokerId;</span>
+<span class="nc" id="L326">    }</span>
+
+    public boolean isAutoCreateSubscriptionGroup() {
+<span class="nc" id="L329">        return autoCreateSubscriptionGroup;</span>
+    }
+
+    public void setAutoCreateSubscriptionGroup(boolean autoCreateSubscriptionGroup) {
+<span class="nc" id="L333">        this.autoCreateSubscriptionGroup = autoCreateSubscriptionGroup;</span>
+<span class="nc" id="L334">    }</span>
+
+    public boolean isRejectTransactionMessage() {
+<span class="nc" id="L337">        return rejectTransactionMessage;</span>
+    }
+
+    public void setRejectTransactionMessage(boolean rejectTransactionMessage) {
+<span class="nc" id="L341">        this.rejectTransactionMessage = rejectTransactionMessage;</span>
+<span class="nc" id="L342">    }</span>
+
+    public boolean isFetchNamesrvAddrByAddressServer() {
+<span class="nc" id="L345">        return fetchNamesrvAddrByAddressServer;</span>
+    }
+
+    public void setFetchNamesrvAddrByAddressServer(boolean fetchNamesrvAddrByAddressServer) {
+<span class="nc" id="L349">        this.fetchNamesrvAddrByAddressServer = fetchNamesrvAddrByAddressServer;</span>
+<span class="nc" id="L350">    }</span>
+
+    public int getSendThreadPoolQueueCapacity() {
+<span class="nc" id="L353">        return sendThreadPoolQueueCapacity;</span>
+    }
+
+    public void setSendThreadPoolQueueCapacity(int sendThreadPoolQueueCapacity) {
+<span class="nc" id="L357">        this.sendThreadPoolQueueCapacity = sendThreadPoolQueueCapacity;</span>
+<span class="nc" id="L358">    }</span>
+
+    public int getPullThreadPoolQueueCapacity() {
+<span class="nc" id="L361">        return pullThreadPoolQueueCapacity;</span>
+    }
+
+    public void setPullThreadPoolQueueCapacity(int pullThreadPoolQueueCapacity) {
+<span class="nc" id="L365">        this.pullThreadPoolQueueCapacity = pullThreadPoolQueueCapacity;</span>
+<span class="nc" id="L366">    }</span>
+
+    public boolean isBrokerTopicEnable() {
+<span class="nc" id="L369">        return brokerTopicEnable;</span>
+    }
+
+    public void setBrokerTopicEnable(boolean brokerTopicEnable) {
+<span class="nc" id="L373">        this.brokerTopicEnable = brokerTopicEnable;</span>
+<span class="nc" id="L374">    }</span>
+
+    public int getFilterServerNums() {
+<span class="nc" id="L377">        return filterServerNums;</span>
+    }
+
+    public void setFilterServerNums(int filterServerNums) {
+<span class="nc" id="L381">        this.filterServerNums = filterServerNums;</span>
+<span class="nc" id="L382">    }</span>
+
+    public boolean isLongPollingEnable() {
+<span class="nc" id="L385">        return longPollingEnable;</span>
+    }
+
+    public void setLongPollingEnable(boolean longPollingEnable) {
+<span class="nc" id="L389">        this.longPollingEnable = longPollingEnable;</span>
+<span class="nc" id="L390">    }</span>
+
+    public boolean isNotifyConsumerIdsChangedEnable() {
+<span class="nc" id="L393">        return notifyConsumerIdsChangedEnable;</span>
+    }
+
+    public void setNotifyConsumerIdsChangedEnable(boolean notifyConsumerIdsChangedEnable) {
+<span class="nc" id="L397">        this.notifyConsumerIdsChangedEnable = notifyConsumerIdsChangedEnable;</span>
+<span class="nc" id="L398">    }</span>
+
+    public long getShortPollingTimeMills() {
+<span class="nc" id="L401">        return shortPollingTimeMills;</span>
+    }
+
+    public void setShortPollingTimeMills(long shortPollingTimeMills) {
+<span class="nc" id="L405">        this.shortPollingTimeMills = shortPollingTimeMills;</span>
+<span class="nc" id="L406">    }</span>
+
+    public int getClientManageThreadPoolNums() {
+<span class="nc" id="L409">        return clientManageThreadPoolNums;</span>
+    }
+
+    public void setClientManageThreadPoolNums(int clientManageThreadPoolNums) {
+<span class="nc" id="L413">        this.clientManageThreadPoolNums = clientManageThreadPoolNums;</span>
+<span class="nc" id="L414">    }</span>
+
+    public boolean isCommercialEnable() {
+<span class="nc" id="L417">        return commercialEnable;</span>
+    }
+
+    public void setCommercialEnable(final boolean commercialEnable) {
+<span class="nc" id="L421">        this.commercialEnable = commercialEnable;</span>
+<span class="nc" id="L422">    }</span>
+
+    public int getCommercialTimerCount() {
+<span class="nc" id="L425">        return commercialTimerCount;</span>
+    }
+
+    public void setCommercialTimerCount(final int commercialTimerCount) {
+<span class="nc" id="L429">        this.commercialTimerCount = commercialTimerCount;</span>
+<span class="nc" id="L430">    }</span>
+
+    public int getCommercialTransCount() {
+<span class="nc" id="L433">        return commercialTransCount;</span>
+    }
+
+    public void setCommercialTransCount(final int commercialTransCount) {
+<span class="nc" id="L437">        this.commercialTransCount = commercialTransCount;</span>
+<span class="nc" id="L438">    }</span>
+
+    public int getCommercialBigCount() {
+<span class="nc" id="L441">        return commercialBigCount;</span>
+    }
+
+    public void setCommercialBigCount(final int commercialBigCount) {
+<span class="nc" id="L445">        this.commercialBigCount = commercialBigCount;</span>
+<span class="nc" id="L446">    }</span>
+
+    public int getMaxDelayTime() {
+<span class="nc" id="L449">        return maxDelayTime;</span>
+    }
+
+    public void setMaxDelayTime(final int maxDelayTime) {
+<span class="nc" id="L453">        this.maxDelayTime = maxDelayTime;</span>
+<span class="nc" id="L454">    }</span>
+
+    public int getClientManagerThreadPoolQueueCapacity() {
+<span class="nc" id="L457">        return clientManagerThreadPoolQueueCapacity;</span>
+    }
+
+    public void setClientManagerThreadPoolQueueCapacity(int clientManagerThreadPoolQueueCapacity) {
+<span class="nc" id="L461">        this.clientManagerThreadPoolQueueCapacity = clientManagerThreadPoolQueueCapacity;</span>
+<span class="nc" id="L462">    }</span>
+
+    public int getConsumerManagerThreadPoolQueueCapacity() {
+<span class="nc" id="L465">        return consumerManagerThreadPoolQueueCapacity;</span>
+    }
+
+    public void setConsumerManagerThreadPoolQueueCapacity(int consumerManagerThreadPoolQueueCapacity) {
+<span class="nc" id="L469">        this.consumerManagerThreadPoolQueueCapacity = consumerManagerThreadPoolQueueCapacity;</span>
+<span class="nc" id="L470">    }</span>
+
+    public int getConsumerManageThreadPoolNums() {
+<span class="nc" id="L473">        return consumerManageThreadPoolNums;</span>
+    }
+
+    public void setConsumerManageThreadPoolNums(int consumerManageThreadPoolNums) {
+<span class="nc" id="L477">        this.consumerManageThreadPoolNums = consumerManageThreadPoolNums;</span>
+<span class="nc" id="L478">    }</span>
+
+    public int getCommercialBaseCount() {
+<span class="nc" id="L481">        return commercialBaseCount;</span>
+    }
+
+    public void setCommercialBaseCount(int commercialBaseCount) {
+<span class="nc" id="L485">        this.commercialBaseCount = commercialBaseCount;</span>
+<span class="nc" id="L486">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

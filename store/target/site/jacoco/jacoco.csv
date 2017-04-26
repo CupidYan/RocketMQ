@@ -1,0 +1,67 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,TransientStorePool,111,31,7,1,22,9,8,3,4,3
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,MessageExtBrokerInner,23,6,4,0,8,2,6,2,4,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,AppendMessageStatus,5,63,0,0,0,6,1,3,1,3
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,AllocateMappedFileService,300,285,46,30,48,70,34,11,0,7
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,GetMessageStatus,9,99,0,0,0,10,2,2,2,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.GroupCommitRequest,5,34,0,0,3,11,0,4,0,4
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.new Object() {...},5,35,0,0,0,1,0,1,0,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,MappedFileQueue,649,553,87,61,165,135,68,43,17,20
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,StoreCheckpoint,18,205,1,3,7,44,4,10,3,9
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.CleanConsumeQueueService,85,9,10,0,22,2,8,1,3,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog,1070,596,123,41,232,141,96,27,20,19
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageFilter,28,3,8,0,9,1,5,1,1,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.CleanCommitLogService,382,27,48,0,83,8,33,1,9,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,MappedFile,769,583,66,46,128,126,64,37,19,26
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,PutMessageResult,28,23,2,2,5,7,6,3,4,3
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,QueryMessageResult,72,0,2,0,20,0,10,0,9,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.new Runnable() {...},13,0,0,0,3,0,2,0,2,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.new Runnable() {...},56,6,8,0,11,1,5,1,1,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore,1764,792,219,53,413,200,179,34,48,29
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.new Runnable() {...},4,6,0,0,2,1,1,1,1,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.new Runnable() {...},4,6,0,0,2,1,1,1,1,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.FlushRealTimeService,25,186,5,15,5,39,5,10,0,5
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DispatchRequest,45,108,0,0,16,38,3,12,3,12
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.CommitRealTimeService,148,13,14,0,28,3,8,2,1,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,ReferenceResource,25,91,4,12,4,25,3,12,0,7
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,StoreStatsService,1170,445,55,27,209,90,57,22,25,13
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,StoreStatsService.CallSnapshot,23,9,0,0,4,4,1,1,1,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,AppendMessageResult,92,46,1,1,20,15,13,6,12,6
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,ConsumeQueue,958,109,98,2,227,28,68,8,18,8
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,PutMessageStatus,9,109,0,0,0,11,2,2,2,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,StoreUtil,19,0,2,0,7,0,4,0,3,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,SelectMappedBufferResult,13,34,1,1,4,13,3,5,2,5
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.FlushCommitLogService,0,6,0,0,0,1,0,1,0,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.ReputMessageService,121,190,20,22,26,45,18,12,2,7
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.DefaultAppendMessageCallback,65,374,10,13,8,74,11,5,1,3
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,RunningFlags,129,20,18,2,35,7,21,3,11,3
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,MappedFile.new PrivilegedAction() {...},6,30,0,0,2,4,0,2,0,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,AllocateMappedFileService.AllocateRequest,90,80,20,4,30,21,17,7,5,7
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,DefaultMessageStore.FlushConsumeQueueService,19,148,1,17,3,35,1,13,0,5
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,CommitLog.GroupCommitService,34,189,3,15,4,48,3,14,0,8
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store,GetMessageResult,118,48,1,1,25,17,16,6,15,6
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAConnection.ReadSocketService,304,0,22,0,68,0,15,0,4,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAConnection,107,0,2,0,30,0,7,0,6,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAService.HAClient,541,96,62,6,131,24,42,5,9,4
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,WaitNotifyObject,198,12,16,0,45,3,13,1,5,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAService.AcceptSocketService,81,102,6,4,19,26,4,6,0,5
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAService,129,98,13,1,32,27,17,5,10,5
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAService.GroupTransferService,119,83,15,3,20,22,10,7,2,6
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.ha,HAConnection.WriteSocketService,474,0,54,0,117,0,32,0,5,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.index,IndexHeader,111,133,2,0,19,36,6,11,5,11
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.index,QueryOffsetResult,21,0,0,0,8,0,4,0,4,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.index,IndexFile,210,417,48,34,39,85,41,14,6,8
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.index,IndexService,538,253,69,22,116,73,47,14,5,10
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.index,IndexService.new Runnable() {...},0,15,0,0,0,3,0,2,0,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.stats,BrokerStats,89,0,0,0,27,0,13,0,13,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.stats,BrokerStatsManager,556,0,0,0,82,0,21,0,21,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.stats,BrokerStatsManager.StatsType,98,0,0,0,9,0,4,0,4,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.schedule,DelayOffsetSerializeWrapper,16,0,0,0,5,0,3,0,3,0
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.schedule,ScheduleMessageService.new TimerTask() {...},10,6,0,0,5,1,1,1,1,1
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.schedule,ScheduleMessageService,143,213,13,9,33,46,17,10,8,8
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.schedule,ScheduleMessageService.DeliverDelayedMessageTimerTask,322,59,15,3,69,18,11,3,2,3
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.config,BrokerRole,9,39,0,0,0,4,2,2,2,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.config,FlushDiskType,9,29,0,0,0,3,2,2,2,2
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.config,MessageStoreConfig,344,319,9,1,148,102,93,34,88,34
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.config,StorePathConfigHelper,33,59,0,0,3,5,3,5,3,5
+rocketmq-store 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.store.util,LibC,10,0,2,0,1,0,2,0,1,0

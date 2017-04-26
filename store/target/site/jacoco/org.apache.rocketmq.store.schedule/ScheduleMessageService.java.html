@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ScheduleMessageService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store.schedule</a> &gt; <span class="el_source">ScheduleMessageService.java</span></div><h1>ScheduleMessageService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store.schedule;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
+import org.apache.rocketmq.common.ConfigManager;
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.running.RunningStats;
+import org.apache.rocketmq.store.ConsumeQueue;
+import org.apache.rocketmq.store.DefaultMessageStore;
+import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.PutMessageStatus;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
+import org.apache.rocketmq.store.config.StorePathConfigHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class ScheduleMessageService extends ConfigManager {
+    public static final String SCHEDULE_TOPIC = &quot;SCHEDULE_TOPIC_XXXX&quot;;
+<span class="fc" id="L46">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+    private static final long FIRST_DELAY_TIME = 1000L;
+    private static final long DELAY_FOR_A_WHILE = 100L;
+    private static final long DELAY_FOR_A_PERIOD = 10000L;
+
+<span class="fc" id="L51">    private final ConcurrentHashMap&lt;Integer /* level */, Long/* delay timeMillis */&gt; delayLevelTable =</span>
+        new ConcurrentHashMap&lt;Integer, Long&gt;(32);
+
+<span class="fc" id="L54">    private final ConcurrentHashMap&lt;Integer /* level */, Long/* offset */&gt; offsetTable =</span>
+        new ConcurrentHashMap&lt;Integer, Long&gt;(32);
+
+<span class="fc" id="L57">    private final Timer timer = new Timer(&quot;ScheduleMessageTimerThread&quot;, true);</span>
+
+    private final DefaultMessageStore defaultMessageStore;
+
+    private int maxDelayLevel;
+
+<span class="fc" id="L63">    public ScheduleMessageService(final DefaultMessageStore defaultMessageStore) {</span>
+<span class="fc" id="L64">        this.defaultMessageStore = defaultMessageStore;</span>
+<span class="fc" id="L65">    }</span>
+
+    public static int queueId2DelayLevel(final int queueId) {
+<span class="nc" id="L68">        return queueId + 1;</span>
+    }
+
+    public static int delayLevel2QueueId(final int delayLevel) {
+<span class="fc" id="L72">        return delayLevel - 1;</span>
+    }
+
+    public void buildRunningStats(HashMap&lt;String, String&gt; stats) {
+<span class="nc" id="L76">        Iterator&lt;Entry&lt;Integer, Long&gt;&gt; it = this.offsetTable.entrySet().iterator();</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L78">            Entry&lt;Integer, Long&gt; next = it.next();</span>
+<span class="nc" id="L79">            int queueId = delayLevel2QueueId(next.getKey());</span>
+<span class="nc" id="L80">            long delayOffset = next.getValue();</span>
+<span class="nc" id="L81">            long maxOffset = this.defaultMessageStore.getMaxOffsetInQuque(SCHEDULE_TOPIC, queueId);</span>
+<span class="nc" id="L82">            String value = String.format(&quot;%d,%d&quot;, delayOffset, maxOffset);</span>
+<span class="nc" id="L83">            String key = String.format(&quot;%s_%d&quot;, RunningStats.scheduleMessageOffset.name(), next.getKey());</span>
+<span class="nc" id="L84">            stats.put(key, value);</span>
+<span class="nc" id="L85">        }</span>
+<span class="nc" id="L86">    }</span>
+
+    private void updateOffset(int delayLevel, long offset) {
+<span class="nc" id="L89">        this.offsetTable.put(delayLevel, offset);</span>
+<span class="nc" id="L90">    }</span>
+
+    public long computeDeliverTimestamp(final int delayLevel, final long storeTimestamp) {
+<span class="nc" id="L93">        Long time = this.delayLevelTable.get(delayLevel);</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (time != null) {</span>
+<span class="nc" id="L95">            return time + storeTimestamp;</span>
+        }
+
+<span class="nc" id="L98">        return storeTimestamp + 1000;</span>
+    }
+
+    public void start() {
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (Map.Entry&lt;Integer, Long&gt; entry : this.delayLevelTable.entrySet()) {</span>
+<span class="fc" id="L104">            Integer level = entry.getKey();</span>
+<span class="fc" id="L105">            Long timeDelay = entry.getValue();</span>
+<span class="fc" id="L106">            Long offset = this.offsetTable.get(level);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (null == offset) {</span>
+<span class="fc" id="L108">                offset = 0L;</span>
+            }
+
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">            if (timeDelay != null) {</span>
+<span class="fc" id="L112">                this.timer.schedule(new DeliverDelayedMessageTimerTask(level, offset), FIRST_DELAY_TIME);</span>
+            }
+<span class="fc" id="L114">        }</span>
+
+<span class="fc" id="L116">        this.timer.scheduleAtFixedRate(new TimerTask() {</span>
+
+            @Override
+            public void run() {
+                try {
+<span class="nc" id="L121">                    ScheduleMessageService.this.persist();</span>
+<span class="nc" id="L122">                } catch (Exception e) {</span>
+<span class="nc" id="L123">                    log.error(&quot;scheduleAtFixedRate flush exception&quot;, e);</span>
+<span class="nc" id="L124">                }</span>
+<span class="nc" id="L125">            }</span>
+<span class="fc" id="L126">        }, 10000, this.defaultMessageStore.getMessageStoreConfig().getFlushDelayOffsetInterval());</span>
+<span class="fc" id="L127">    }</span>
+
+    public void shutdown() {
+<span class="fc" id="L130">        this.timer.cancel();</span>
+<span class="fc" id="L131">    }</span>
+
+    public int getMaxDelayLevel() {
+<span class="nc" id="L134">        return maxDelayLevel;</span>
+    }
+
+    public String encode() {
+<span class="nc" id="L138">        return this.encode(false);</span>
+    }
+
+    public boolean load() {
+<span class="fc" id="L142">        boolean result = super.load();</span>
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">        result = result &amp;&amp; this.parseDelayLevel();</span>
+<span class="fc" id="L144">        return result;</span>
+    }
+
+    @Override
+    public String configFilePath() {
+<span class="fc" id="L149">        return StorePathConfigHelper.getDelayOffsetStorePath(this.defaultMessageStore.getMessageStoreConfig()</span>
+<span class="fc" id="L150">            .getStorePathRootDir());</span>
+    }
+
+    @Override
+    public void decode(String jsonString) {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (jsonString != null) {</span>
+<span class="nc" id="L156">            DelayOffsetSerializeWrapper delayOffsetSerializeWrapper =</span>
+<span class="nc" id="L157">                DelayOffsetSerializeWrapper.fromJson(jsonString, DelayOffsetSerializeWrapper.class);</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            if (delayOffsetSerializeWrapper != null) {</span>
+<span class="nc" id="L159">                this.offsetTable.putAll(delayOffsetSerializeWrapper.getOffsetTable());</span>
+            }
+        }
+<span class="nc" id="L162">    }</span>
+
+    public String encode(final boolean prettyFormat) {
+<span class="nc" id="L165">        DelayOffsetSerializeWrapper delayOffsetSerializeWrapper = new DelayOffsetSerializeWrapper();</span>
+<span class="nc" id="L166">        delayOffsetSerializeWrapper.setOffsetTable(this.offsetTable);</span>
+<span class="nc" id="L167">        return delayOffsetSerializeWrapper.toJson(prettyFormat);</span>
+    }
+
+    public boolean parseDelayLevel() {
+<span class="fc" id="L171">        HashMap&lt;String, Long&gt; timeUnitTable = new HashMap&lt;String, Long&gt;();</span>
+<span class="fc" id="L172">        timeUnitTable.put(&quot;s&quot;, 1000L);</span>
+<span class="fc" id="L173">        timeUnitTable.put(&quot;m&quot;, 1000L * 60);</span>
+<span class="fc" id="L174">        timeUnitTable.put(&quot;h&quot;, 1000L * 60 * 60);</span>
+<span class="fc" id="L175">        timeUnitTable.put(&quot;d&quot;, 1000L * 60 * 60 * 24);</span>
+
+<span class="fc" id="L177">        String levelString = this.defaultMessageStore.getMessageStoreConfig().getMessageDelayLevel();</span>
+        try {
+<span class="fc" id="L179">            String[] levelArray = levelString.split(&quot; &quot;);</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            for (int i = 0; i &lt; levelArray.length; i++) {</span>
+<span class="fc" id="L181">                String value = levelArray[i];</span>
+<span class="fc" id="L182">                String ch = value.substring(value.length() - 1);</span>
+<span class="fc" id="L183">                Long tu = timeUnitTable.get(ch);</span>
+
+<span class="fc" id="L185">                int level = i + 1;</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                if (level &gt; this.maxDelayLevel) {</span>
+<span class="fc" id="L187">                    this.maxDelayLevel = level;</span>
+                }
+<span class="fc" id="L189">                long num = Long.parseLong(value.substring(0, value.length() - 1));</span>
+<span class="fc" id="L190">                long delayTimeMillis = tu * num;</span>
+<span class="fc" id="L191">                this.delayLevelTable.put(level, delayTimeMillis);</span>
+            }
+<span class="nc" id="L193">        } catch (Exception e) {</span>
+<span class="nc" id="L194">            log.error(&quot;parseDelayLevel exception&quot;, e);</span>
+<span class="nc" id="L195">            log.info(&quot;levelString String = {}&quot;, levelString);</span>
+<span class="nc" id="L196">            return false;</span>
+<span class="fc" id="L197">        }</span>
+
+<span class="fc" id="L199">        return true;</span>
+    }
+
+    class DeliverDelayedMessageTimerTask extends TimerTask {
+        private final int delayLevel;
+        private final long offset;
+
+<span class="fc" id="L206">        public DeliverDelayedMessageTimerTask(int delayLevel, long offset) {</span>
+<span class="fc" id="L207">            this.delayLevel = delayLevel;</span>
+<span class="fc" id="L208">            this.offset = offset;</span>
+<span class="fc" id="L209">        }</span>
+
+        @Override
+        public void run() {
+            try {
+<span class="fc" id="L214">                this.executeOnTimeup();</span>
+<span class="nc" id="L215">            } catch (Exception e) {</span>
+                // XXX: warn and notify me
+<span class="nc" id="L217">                log.error(&quot;ScheduleMessageService, executeOnTimeup exception&quot;, e);</span>
+<span class="nc" id="L218">                ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(</span>
+                    this.delayLevel, this.offset), DELAY_FOR_A_PERIOD);
+<span class="fc" id="L220">            }</span>
+<span class="fc" id="L221">        }</span>
+
+        /**
+         * @return
+         */
+        private long correctDeliverTimestamp(final long now, final long deliverTimestamp) {
+
+<span class="nc" id="L228">            long result = deliverTimestamp;</span>
+
+<span class="nc" id="L230">            long maxTimestamp = now + ScheduleMessageService.this.delayLevelTable.get(this.delayLevel);</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">            if (deliverTimestamp &gt; maxTimestamp) {</span>
+<span class="nc" id="L232">                result = now;</span>
+            }
+
+<span class="nc" id="L235">            return result;</span>
+        }
+
+        public void executeOnTimeup() {
+<span class="fc" id="L239">            ConsumeQueue cq =</span>
+<span class="fc" id="L240">                ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(SCHEDULE_TOPIC,</span>
+<span class="fc" id="L241">                    delayLevel2QueueId(delayLevel));</span>
+
+<span class="fc" id="L243">            long failScheduleOffset = offset;</span>
+
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">            if (cq != null) {</span>
+<span class="fc" id="L246">                SelectMappedBufferResult bufferCQ = cq.getIndexBuffer(this.offset);</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                if (bufferCQ != null) {</span>
+                    try {
+<span class="nc" id="L249">                        long nextOffset = offset;</span>
+<span class="nc" id="L250">                        int i = 0;</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                        for (; i &lt; bufferCQ.getSize(); i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {</span>
+<span class="nc" id="L252">                            long offsetPy = bufferCQ.getByteBuffer().getLong();</span>
+<span class="nc" id="L253">                            int sizePy = bufferCQ.getByteBuffer().getInt();</span>
+<span class="nc" id="L254">                            long tagsCode = bufferCQ.getByteBuffer().getLong();</span>
+
+<span class="nc" id="L256">                            long now = System.currentTimeMillis();</span>
+<span class="nc" id="L257">                            long deliverTimestamp = this.correctDeliverTimestamp(now, tagsCode);</span>
+
+<span class="nc" id="L259">                            nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);</span>
+
+<span class="nc" id="L261">                            long countdown = deliverTimestamp - now;</span>
+
+<span class="nc bnc" id="L263" title="All 2 branches missed.">                            if (countdown &lt;= 0) {</span>
+<span class="nc" id="L264">                                MessageExt msgExt =</span>
+<span class="nc" id="L265">                                    ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(</span>
+                                        offsetPy, sizePy);
+
+<span class="nc bnc" id="L268" title="All 2 branches missed.">                                if (msgExt != null) {</span>
+                                    try {
+<span class="nc" id="L270">                                        MessageExtBrokerInner msgInner = this.messageTimeup(msgExt);</span>
+<span class="nc" id="L271">                                        PutMessageResult putMessageResult =</span>
+<span class="nc" id="L272">                                            ScheduleMessageService.this.defaultMessageStore</span>
+<span class="nc" id="L273">                                                .putMessage(msgInner);</span>
+
+<span class="nc bnc" id="L275" title="All 2 branches missed.">                                        if (putMessageResult != null</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">                                            &amp;&amp; putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {</span>
+<span class="nc" id="L277">                                            continue;</span>
+                                        } else {
+                                            // XXX: warn and notify me
+<span class="nc" id="L280">                                            log.error(</span>
+                                                &quot;ScheduleMessageService, a message time up, but reput it failed, topic: {} msgId {}&quot;,
+<span class="nc" id="L282">                                                msgExt.getTopic(), msgExt.getMsgId());</span>
+<span class="nc" id="L283">                                            ScheduleMessageService.this.timer.schedule(</span>
+                                                new DeliverDelayedMessageTimerTask(this.delayLevel,
+                                                    nextOffset), DELAY_FOR_A_PERIOD);
+<span class="nc" id="L286">                                            ScheduleMessageService.this.updateOffset(this.delayLevel,</span>
+                                                nextOffset);
+<span class="nc" id="L288">                                            return;</span>
+                                        }
+<span class="nc" id="L290">                                    } catch (Exception e) {</span>
+                                        /*
+                                         * XXX: warn and notify me
+
+
+
+                                         */
+<span class="nc" id="L297">                                        log.error(</span>
+                                            &quot;ScheduleMessageService, messageTimeup execute error, drop it. msgExt=&quot;
+                                                + msgExt + &quot;, nextOffset=&quot; + nextOffset + &quot;,offsetPy=&quot;
+                                                + offsetPy + &quot;,sizePy=&quot; + sizePy, e);
+                                    }
+                                }
+<span class="nc" id="L303">                            } else {</span>
+<span class="nc" id="L304">                                ScheduleMessageService.this.timer.schedule(</span>
+                                    new DeliverDelayedMessageTimerTask(this.delayLevel, nextOffset),
+                                    countdown);
+<span class="nc" id="L307">                                ScheduleMessageService.this.updateOffset(this.delayLevel, nextOffset);</span>
+<span class="nc" id="L308">                                return;</span>
+                            }
+                        } // end of for
+
+<span class="nc" id="L312">                        nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);</span>
+<span class="nc" id="L313">                        ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(</span>
+                            this.delayLevel, nextOffset), DELAY_FOR_A_WHILE);
+<span class="nc" id="L315">                        ScheduleMessageService.this.updateOffset(this.delayLevel, nextOffset);</span>
+<span class="nc" id="L316">                        return;</span>
+                    } finally {
+
+<span class="nc" id="L319">                        bufferCQ.release();</span>
+                    }
+                } // end of if (bufferCQ != null)
+                else {
+                    /*
+
+
+                     */
+<span class="fc" id="L327">                    long cqMinOffset = cq.getMinOffsetInQueue();</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">                    if (offset &lt; cqMinOffset) {</span>
+<span class="nc" id="L329">                        failScheduleOffset = cqMinOffset;</span>
+<span class="nc" id="L330">                        log.error(&quot;schedule CQ offset invalid. offset=&quot; + offset + &quot;, cqMinOffset=&quot;</span>
+<span class="nc" id="L331">                            + cqMinOffset + &quot;, queueId=&quot; + cq.getQueueId());</span>
+                    }
+                }
+            } // end of if (cq != null)
+
+<span class="fc" id="L336">            ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(this.delayLevel,</span>
+                failScheduleOffset), DELAY_FOR_A_WHILE);
+<span class="fc" id="L338">        }</span>
+
+        private MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
+<span class="nc" id="L341">            MessageExtBrokerInner msgInner = new MessageExtBrokerInner();</span>
+<span class="nc" id="L342">            msgInner.setBody(msgExt.getBody());</span>
+<span class="nc" id="L343">            msgInner.setFlag(msgExt.getFlag());</span>
+<span class="nc" id="L344">            MessageAccessor.setProperties(msgInner, msgExt.getProperties());</span>
+
+<span class="nc" id="L346">            TopicFilterType topicFilterType = MessageExt.parseTopicFilterType(msgInner.getSysFlag());</span>
+<span class="nc" id="L347">            long tagsCodeValue =</span>
+<span class="nc" id="L348">                MessageExtBrokerInner.tagsString2tagsCode(topicFilterType, msgInner.getTags());</span>
+<span class="nc" id="L349">            msgInner.setTagsCode(tagsCodeValue);</span>
+<span class="nc" id="L350">            msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgExt.getProperties()));</span>
+
+<span class="nc" id="L352">            msgInner.setSysFlag(msgExt.getSysFlag());</span>
+<span class="nc" id="L353">            msgInner.setBornTimestamp(msgExt.getBornTimestamp());</span>
+<span class="nc" id="L354">            msgInner.setBornHost(msgExt.getBornHost());</span>
+<span class="nc" id="L355">            msgInner.setStoreHost(msgExt.getStoreHost());</span>
+<span class="nc" id="L356">            msgInner.setReconsumeTimes(msgExt.getReconsumeTimes());</span>
+
+<span class="nc" id="L358">            msgInner.setWaitStoreMsgOK(false);</span>
+<span class="nc" id="L359">            MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_DELAY_TIME_LEVEL);</span>
+
+<span class="nc" id="L361">            msgInner.setTopic(msgInner.getProperty(MessageConst.PROPERTY_REAL_TOPIC));</span>
+
+<span class="nc" id="L363">            String queueIdStr = msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID);</span>
+<span class="nc" id="L364">            int queueId = Integer.parseInt(queueIdStr);</span>
+<span class="nc" id="L365">            msgInner.setQueueId(queueId);</span>
+
+<span class="nc" id="L367">            return msgInner;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

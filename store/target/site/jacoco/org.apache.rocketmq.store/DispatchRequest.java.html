@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DispatchRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">DispatchRequest.java</span></div><h1>DispatchRequest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+public class DispatchRequest {
+    private final String topic;
+    private final int queueId;
+    private final long commitLogOffset;
+    private final int msgSize;
+    private final long tagsCode;
+    private final long storeTimestamp;
+    private final long consumeQueueOffset;
+    private final String keys;
+    private final boolean success;
+    private final String uniqKey;
+
+    private final int sysFlag;
+    private final long preparedTransactionOffset;
+
+    public DispatchRequest(
+        final String topic,
+        final int queueId,
+        final long commitLogOffset,
+        final int msgSize,
+        final long tagsCode,
+        final long storeTimestamp,
+        final long consumeQueueOffset,
+        final String keys,
+        final String uniqKey,
+        final int sysFlag,
+        final long preparedTransactionOffset
+<span class="fc" id="L46">    ) {</span>
+<span class="fc" id="L47">        this.topic = topic;</span>
+<span class="fc" id="L48">        this.queueId = queueId;</span>
+<span class="fc" id="L49">        this.commitLogOffset = commitLogOffset;</span>
+<span class="fc" id="L50">        this.msgSize = msgSize;</span>
+<span class="fc" id="L51">        this.tagsCode = tagsCode;</span>
+<span class="fc" id="L52">        this.storeTimestamp = storeTimestamp;</span>
+<span class="fc" id="L53">        this.consumeQueueOffset = consumeQueueOffset;</span>
+<span class="fc" id="L54">        this.keys = keys;</span>
+<span class="fc" id="L55">        this.uniqKey = uniqKey;</span>
+
+<span class="fc" id="L57">        this.sysFlag = sysFlag;</span>
+<span class="fc" id="L58">        this.preparedTransactionOffset = preparedTransactionOffset;</span>
+<span class="fc" id="L59">        this.success = true;</span>
+<span class="fc" id="L60">    }</span>
+
+<span class="nc" id="L62">    public DispatchRequest(int size) {</span>
+        // 1
+<span class="nc" id="L64">        this.topic = &quot;&quot;;</span>
+        // 2
+<span class="nc" id="L66">        this.queueId = 0;</span>
+        // 3
+<span class="nc" id="L68">        this.commitLogOffset = 0;</span>
+        // 4
+<span class="nc" id="L70">        this.msgSize = size;</span>
+        // 5
+<span class="nc" id="L72">        this.tagsCode = 0;</span>
+        // 6
+<span class="nc" id="L74">        this.storeTimestamp = 0;</span>
+        // 7
+<span class="nc" id="L76">        this.consumeQueueOffset = 0;</span>
+        // 8
+<span class="nc" id="L78">        this.keys = &quot;&quot;;</span>
+        //9
+<span class="nc" id="L80">        this.uniqKey = null;</span>
+<span class="nc" id="L81">        this.sysFlag = 0;</span>
+<span class="nc" id="L82">        this.preparedTransactionOffset = 0;</span>
+<span class="nc" id="L83">        this.success = false;</span>
+<span class="nc" id="L84">    }</span>
+
+<span class="fc" id="L86">    public DispatchRequest(int size, boolean success) {</span>
+        // 1
+<span class="fc" id="L88">        this.topic = &quot;&quot;;</span>
+        // 2
+<span class="fc" id="L90">        this.queueId = 0;</span>
+        // 3
+<span class="fc" id="L92">        this.commitLogOffset = 0;</span>
+        // 4
+<span class="fc" id="L94">        this.msgSize = size;</span>
+        // 5
+<span class="fc" id="L96">        this.tagsCode = 0;</span>
+        // 6
+<span class="fc" id="L98">        this.storeTimestamp = 0;</span>
+        // 7
+<span class="fc" id="L100">        this.consumeQueueOffset = 0;</span>
+        // 8
+<span class="fc" id="L102">        this.keys = &quot;&quot;;</span>
+        // 9
+<span class="fc" id="L104">        this.uniqKey = null;</span>
+<span class="fc" id="L105">        this.sysFlag = 0;</span>
+<span class="fc" id="L106">        this.preparedTransactionOffset = 0;</span>
+<span class="fc" id="L107">        this.success = success;</span>
+<span class="fc" id="L108">    }</span>
+
+    public String getTopic() {
+<span class="fc" id="L111">        return topic;</span>
+    }
+
+    public int getQueueId() {
+<span class="fc" id="L115">        return queueId;</span>
+    }
+
+    public long getCommitLogOffset() {
+<span class="fc" id="L119">        return commitLogOffset;</span>
+    }
+
+    public int getMsgSize() {
+<span class="fc" id="L123">        return msgSize;</span>
+    }
+
+    public long getStoreTimestamp() {
+<span class="nc" id="L127">        return storeTimestamp;</span>
+    }
+
+    public long getConsumeQueueOffset() {
+<span class="fc" id="L131">        return consumeQueueOffset;</span>
+    }
+
+    public String getKeys() {
+<span class="fc" id="L135">        return keys;</span>
+    }
+
+    public long getTagsCode() {
+<span class="fc" id="L139">        return tagsCode;</span>
+    }
+
+    public int getSysFlag() {
+<span class="fc" id="L143">        return sysFlag;</span>
+    }
+
+    public long getPreparedTransactionOffset() {
+<span class="nc" id="L147">        return preparedTransactionOffset;</span>
+    }
+
+    public boolean isSuccess() {
+<span class="fc" id="L151">        return success;</span>
+    }
+
+    public String getUniqKey() {
+<span class="fc" id="L155">        return uniqKey;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

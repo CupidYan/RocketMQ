@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.rocketmq.namesrv.NamesrvControllerTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.539 sec - in org.apache.rocketmq.namesrv.NamesrvControllerTest

@@ -1,0 +1,589 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StoreStatsService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">StoreStatsService.java</span></div><h1>StoreStatsService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import java.text.MessageFormat;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
+import org.apache.rocketmq.common.ServiceThread;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class StoreStatsService extends ServiceThread {
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+
+    private static final int FREQUENCY_OF_SAMPLING = 1000;
+
+    private static final int MAX_RECORDS_OF_SAMPLING = 60 * 10;
+<span class="fc" id="L37">    private static final String[] PUT_MESSAGE_ENTIRE_TIME_MAX_DESC = new String[] {</span>
+        &quot;[&lt;=0ms]&quot;, &quot;[0~10ms]&quot;, &quot;[10~50ms]&quot;, &quot;[50~100ms]&quot;, &quot;[100~200ms]&quot;, &quot;[200~500ms]&quot;, &quot;[500ms~1s]&quot;, &quot;[1~2s]&quot;, &quot;[2~3s]&quot;, &quot;[3~4s]&quot;, &quot;[4~5s]&quot;, &quot;[5~10s]&quot;, &quot;[10s~]&quot;,
+    };
+
+<span class="fc" id="L41">    private static int printTPSInterval = 60 * 1;</span>
+
+<span class="fc" id="L43">    private final AtomicLong putMessageFailedTimes = new AtomicLong(0);</span>
+
+<span class="fc" id="L45">    private final Map&lt;String, AtomicLong&gt; putMessageTopicTimesTotal =</span>
+        new ConcurrentHashMap&lt;String, AtomicLong&gt;(128);
+<span class="fc" id="L47">    private final Map&lt;String, AtomicLong&gt; putMessageTopicSizeTotal =</span>
+        new ConcurrentHashMap&lt;String, AtomicLong&gt;(128);
+
+<span class="fc" id="L50">    private final AtomicLong getMessageTimesTotalFound = new AtomicLong(0);</span>
+<span class="fc" id="L51">    private final AtomicLong getMessageTransferedMsgCount = new AtomicLong(0);</span>
+<span class="fc" id="L52">    private final AtomicLong getMessageTimesTotalMiss = new AtomicLong(0);</span>
+<span class="fc" id="L53">    private final LinkedList&lt;CallSnapshot&gt; putTimesList = new LinkedList&lt;CallSnapshot&gt;();</span>
+
+<span class="fc" id="L55">    private final LinkedList&lt;CallSnapshot&gt; getTimesFoundList = new LinkedList&lt;CallSnapshot&gt;();</span>
+<span class="fc" id="L56">    private final LinkedList&lt;CallSnapshot&gt; getTimesMissList = new LinkedList&lt;CallSnapshot&gt;();</span>
+<span class="fc" id="L57">    private final LinkedList&lt;CallSnapshot&gt; transferedMsgCountList = new LinkedList&lt;CallSnapshot&gt;();</span>
+    private volatile AtomicLong[] putMessageDistributeTime;
+<span class="fc" id="L59">    private long messageStoreBootTimestamp = System.currentTimeMillis();</span>
+<span class="fc" id="L60">    private volatile long putMessageEntireTimeMax = 0;</span>
+<span class="fc" id="L61">    private volatile long getMessageEntireTimeMax = 0;</span>
+    // for putMessageEntireTimeMax
+<span class="fc" id="L63">    private ReentrantLock lockPut = new ReentrantLock();</span>
+    // for getMessageEntireTimeMax
+<span class="fc" id="L65">    private ReentrantLock lockGet = new ReentrantLock();</span>
+
+<span class="fc" id="L67">    private volatile long dispatchMaxBuffer = 0;</span>
+
+<span class="fc" id="L69">    private ReentrantLock lockSampling = new ReentrantLock();</span>
+<span class="fc" id="L70">    private long lastPrintTimestamp = System.currentTimeMillis();</span>
+
+<span class="fc" id="L72">    public StoreStatsService() {</span>
+<span class="fc" id="L73">        this.initPutMessageDistributeTime();</span>
+<span class="fc" id="L74">    }</span>
+
+    private AtomicLong[] initPutMessageDistributeTime() {
+<span class="fc" id="L77">        AtomicLong[] next = new AtomicLong[13];</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (int i = 0; i &lt; next.length; i++) {</span>
+<span class="fc" id="L79">            next[i] = new AtomicLong(0);</span>
+        }
+
+<span class="fc" id="L82">        AtomicLong[] old = this.putMessageDistributeTime;</span>
+
+<span class="fc" id="L84">        this.putMessageDistributeTime = next;</span>
+
+<span class="fc" id="L86">        return old;</span>
+    }
+
+    public long getPutMessageEntireTimeMax() {
+<span class="nc" id="L90">        return putMessageEntireTimeMax;</span>
+    }
+
+    public void setPutMessageEntireTimeMax(long value) {
+<span class="fc" id="L94">        final AtomicLong[] times = this.putMessageDistributeTime;</span>
+
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (null == times)</span>
+<span class="nc" id="L97">            return;</span>
+
+        // us
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (value &lt;= 0) {</span>
+<span class="fc" id="L101">            times[0].incrementAndGet();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        } else if (value &lt; 10) {</span>
+<span class="fc" id="L103">            times[1].incrementAndGet();</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        } else if (value &lt; 50) {</span>
+<span class="fc" id="L105">            times[2].incrementAndGet();</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        } else if (value &lt; 100) {</span>
+<span class="nc" id="L107">            times[3].incrementAndGet();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        } else if (value &lt; 200) {</span>
+<span class="nc" id="L109">            times[4].incrementAndGet();</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        } else if (value &lt; 500) {</span>
+<span class="nc" id="L111">            times[5].incrementAndGet();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        } else if (value &lt; 1000) {</span>
+<span class="nc" id="L113">            times[6].incrementAndGet();</span>
+        }
+        // 2s
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        else if (value &lt; 2000) {</span>
+<span class="nc" id="L117">            times[7].incrementAndGet();</span>
+        }
+        // 3s
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        else if (value &lt; 3000) {</span>
+<span class="nc" id="L121">            times[8].incrementAndGet();</span>
+        }
+        // 4s
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        else if (value &lt; 4000) {</span>
+<span class="nc" id="L125">            times[9].incrementAndGet();</span>
+        }
+        // 5s
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        else if (value &lt; 5000) {</span>
+<span class="nc" id="L129">            times[10].incrementAndGet();</span>
+        }
+        // 10s
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        else if (value &lt; 10000) {</span>
+<span class="nc" id="L133">            times[11].incrementAndGet();</span>
+        } else {
+<span class="nc" id="L135">            times[12].incrementAndGet();</span>
+        }
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (value &gt; this.putMessageEntireTimeMax) {</span>
+<span class="fc" id="L139">            this.lockPut.lock();</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            this.putMessageEntireTimeMax =</span>
+                value &gt; this.putMessageEntireTimeMax ? value : this.putMessageEntireTimeMax;
+<span class="fc" id="L142">            this.lockPut.unlock();</span>
+        }
+<span class="fc" id="L144">    }</span>
+
+    public long getGetMessageEntireTimeMax() {
+<span class="nc" id="L147">        return getMessageEntireTimeMax;</span>
+    }
+
+    public void setGetMessageEntireTimeMax(long value) {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (value &gt; this.getMessageEntireTimeMax) {</span>
+<span class="fc" id="L152">            this.lockGet.lock();</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            this.getMessageEntireTimeMax =</span>
+                value &gt; this.getMessageEntireTimeMax ? value : this.getMessageEntireTimeMax;
+<span class="fc" id="L155">            this.lockGet.unlock();</span>
+        }
+<span class="fc" id="L157">    }</span>
+
+    public long getDispatchMaxBuffer() {
+<span class="nc" id="L160">        return dispatchMaxBuffer;</span>
+    }
+
+    public void setDispatchMaxBuffer(long value) {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        this.dispatchMaxBuffer = value &gt; this.dispatchMaxBuffer ? value : this.dispatchMaxBuffer;</span>
+<span class="nc" id="L165">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L169">        final StringBuilder sb = new StringBuilder(1024);</span>
+<span class="nc" id="L170">        Long totalTimes = getPutMessageTimesTotal();</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (0 == totalTimes) {</span>
+<span class="nc" id="L172">            totalTimes = 1L;</span>
+        }
+
+<span class="nc" id="L175">        sb.append(&quot;\truntime: &quot; + this.getFormatRuntime() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L176">        sb.append(&quot;\tputMessageEntireTimeMax: &quot; + this.putMessageEntireTimeMax + &quot;\r\n&quot;);</span>
+<span class="nc" id="L177">        sb.append(&quot;\tputMessageTimesTotal: &quot; + totalTimes + &quot;\r\n&quot;);</span>
+<span class="nc" id="L178">        sb.append(&quot;\tputMessageSizeTotal: &quot; + this.getPutMessageSizeTotal() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L179">        sb.append(&quot;\tputMessageDistributeTime: &quot; + this.getPutMessageDistributeTimeStringInfo(totalTimes)</span>
+            + &quot;\r\n&quot;);
+<span class="nc" id="L181">        sb.append(&quot;\tputMessageAverageSize: &quot; + (this.getPutMessageSizeTotal() / totalTimes.doubleValue())</span>
+            + &quot;\r\n&quot;);
+<span class="nc" id="L183">        sb.append(&quot;\tdispatchMaxBuffer: &quot; + this.dispatchMaxBuffer + &quot;\r\n&quot;);</span>
+<span class="nc" id="L184">        sb.append(&quot;\tgetMessageEntireTimeMax: &quot; + this.getMessageEntireTimeMax + &quot;\r\n&quot;);</span>
+<span class="nc" id="L185">        sb.append(&quot;\tputTps: &quot; + this.getPutTps() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L186">        sb.append(&quot;\tgetFoundTps: &quot; + this.getGetFoundTps() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L187">        sb.append(&quot;\tgetMissTps: &quot; + this.getGetMissTps() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L188">        sb.append(&quot;\tgetTotalTps: &quot; + this.getGetTotalTps() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L189">        sb.append(&quot;\tgetTransferedTps: &quot; + this.getGetTransferedTps() + &quot;\r\n&quot;);</span>
+<span class="nc" id="L190">        return sb.toString();</span>
+    }
+
+    public long getPutMessageTimesTotal() {
+<span class="fc" id="L194">        long rs = 0;</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (AtomicLong data : putMessageTopicTimesTotal.values()) {</span>
+<span class="fc" id="L196">            rs += data.get();</span>
+<span class="fc" id="L197">        }</span>
+<span class="fc" id="L198">        return rs;</span>
+    }
+
+    private String getFormatRuntime() {
+<span class="nc" id="L202">        final long millisecond = 1;</span>
+<span class="nc" id="L203">        final long second = 1000 * millisecond;</span>
+<span class="nc" id="L204">        final long minute = 60 * second;</span>
+<span class="nc" id="L205">        final long hour = 60 * minute;</span>
+<span class="nc" id="L206">        final long day = 24 * hour;</span>
+<span class="nc" id="L207">        final MessageFormat messageFormat = new MessageFormat(&quot;[ {0} days, {1} hours, {2} minutes, {3} seconds ]&quot;);</span>
+
+<span class="nc" id="L209">        long time = System.currentTimeMillis() - this.messageStoreBootTimestamp;</span>
+<span class="nc" id="L210">        long days = time / day;</span>
+<span class="nc" id="L211">        long hours = (time % day) / hour;</span>
+<span class="nc" id="L212">        long minutes = (time % hour) / minute;</span>
+<span class="nc" id="L213">        long seconds = (time % minute) / second;</span>
+<span class="nc" id="L214">        return messageFormat.format(new Long[] {days, hours, minutes, seconds});</span>
+    }
+
+    public long getPutMessageSizeTotal() {
+<span class="nc" id="L218">        long rs = 0;</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        for (AtomicLong data : putMessageTopicSizeTotal.values()) {</span>
+<span class="nc" id="L220">            rs += data.get();</span>
+<span class="nc" id="L221">        }</span>
+<span class="nc" id="L222">        return rs;</span>
+    }
+
+    private String getPutMessageDistributeTimeStringInfo(Long total) {
+<span class="nc" id="L226">        return this.putMessageDistributeTimeToString();</span>
+    }
+
+    private String getPutTps() {
+<span class="nc" id="L230">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L232">        sb.append(this.getPutTps(10));</span>
+<span class="nc" id="L233">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L235">        sb.append(this.getPutTps(60));</span>
+<span class="nc" id="L236">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L238">        sb.append(this.getPutTps(600));</span>
+
+<span class="nc" id="L240">        return sb.toString();</span>
+    }
+
+    private String getGetFoundTps() {
+<span class="nc" id="L244">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L246">        sb.append(this.getGetFoundTps(10));</span>
+<span class="nc" id="L247">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L249">        sb.append(this.getGetFoundTps(60));</span>
+<span class="nc" id="L250">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L252">        sb.append(this.getGetFoundTps(600));</span>
+
+<span class="nc" id="L254">        return sb.toString();</span>
+    }
+
+    private String getGetMissTps() {
+<span class="nc" id="L258">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L260">        sb.append(this.getGetMissTps(10));</span>
+<span class="nc" id="L261">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L263">        sb.append(this.getGetMissTps(60));</span>
+<span class="nc" id="L264">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L266">        sb.append(this.getGetMissTps(600));</span>
+
+<span class="nc" id="L268">        return sb.toString();</span>
+    }
+
+    private String getGetTotalTps() {
+<span class="nc" id="L272">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L274">        sb.append(this.getGetTotalTps(10));</span>
+<span class="nc" id="L275">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L277">        sb.append(this.getGetTotalTps(60));</span>
+<span class="nc" id="L278">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L280">        sb.append(this.getGetTotalTps(600));</span>
+
+<span class="nc" id="L282">        return sb.toString();</span>
+    }
+
+    private String getGetTransferedTps() {
+<span class="nc" id="L286">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L288">        sb.append(this.getGetTransferedTps(10));</span>
+<span class="nc" id="L289">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L291">        sb.append(this.getGetTransferedTps(60));</span>
+<span class="nc" id="L292">        sb.append(&quot; &quot;);</span>
+
+<span class="nc" id="L294">        sb.append(this.getGetTransferedTps(600));</span>
+
+<span class="nc" id="L296">        return sb.toString();</span>
+    }
+
+    private String putMessageDistributeTimeToString() {
+<span class="nc" id="L300">        final AtomicLong[] times = this.putMessageDistributeTime;</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        if (null == times)</span>
+<span class="nc" id="L302">            return null;</span>
+
+<span class="nc" id="L304">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        for (int i = 0; i &lt; times.length; i++) {</span>
+<span class="nc" id="L306">            long value = times[i].get();</span>
+<span class="nc" id="L307">            sb.append(String.format(&quot;%s:%d&quot;, PUT_MESSAGE_ENTIRE_TIME_MAX_DESC[i], value));</span>
+<span class="nc" id="L308">            sb.append(&quot; &quot;);</span>
+        }
+
+<span class="nc" id="L311">        return sb.toString();</span>
+    }
+
+    private String getPutTps(int time) {
+<span class="nc" id="L315">        String result = &quot;&quot;;</span>
+<span class="nc" id="L316">        this.lockSampling.lock();</span>
+        try {
+<span class="nc" id="L318">            CallSnapshot last = this.putTimesList.getLast();</span>
+
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            if (this.putTimesList.size() &gt; time) {</span>
+<span class="nc" id="L321">                CallSnapshot lastBefore = this.putTimesList.get(this.putTimesList.size() - (time + 1));</span>
+<span class="nc" id="L322">                result += CallSnapshot.getTPS(lastBefore, last);</span>
+            }
+
+        } finally {
+<span class="nc" id="L326">            this.lockSampling.unlock();</span>
+<span class="nc" id="L327">        }</span>
+<span class="nc" id="L328">        return result;</span>
+    }
+
+    private String getGetFoundTps(int time) {
+<span class="nc" id="L332">        String result = &quot;&quot;;</span>
+<span class="nc" id="L333">        this.lockSampling.lock();</span>
+        try {
+<span class="nc" id="L335">            CallSnapshot last = this.getTimesFoundList.getLast();</span>
+
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            if (this.getTimesFoundList.size() &gt; time) {</span>
+<span class="nc" id="L338">                CallSnapshot lastBefore =</span>
+<span class="nc" id="L339">                    this.getTimesFoundList.get(this.getTimesFoundList.size() - (time + 1));</span>
+<span class="nc" id="L340">                result += CallSnapshot.getTPS(lastBefore, last);</span>
+            }
+        } finally {
+<span class="nc" id="L343">            this.lockSampling.unlock();</span>
+<span class="nc" id="L344">        }</span>
+
+<span class="nc" id="L346">        return result;</span>
+    }
+
+    private String getGetMissTps(int time) {
+<span class="nc" id="L350">        String result = &quot;&quot;;</span>
+<span class="nc" id="L351">        this.lockSampling.lock();</span>
+        try {
+<span class="nc" id="L353">            CallSnapshot last = this.getTimesMissList.getLast();</span>
+
+<span class="nc bnc" id="L355" title="All 2 branches missed.">            if (this.getTimesMissList.size() &gt; time) {</span>
+<span class="nc" id="L356">                CallSnapshot lastBefore =</span>
+<span class="nc" id="L357">                    this.getTimesMissList.get(this.getTimesMissList.size() - (time + 1));</span>
+<span class="nc" id="L358">                result += CallSnapshot.getTPS(lastBefore, last);</span>
+            }
+
+        } finally {
+<span class="nc" id="L362">            this.lockSampling.unlock();</span>
+<span class="nc" id="L363">        }</span>
+
+<span class="nc" id="L365">        return result;</span>
+    }
+
+    private String getGetTotalTps(int time) {
+<span class="nc" id="L369">        this.lockSampling.lock();</span>
+<span class="nc" id="L370">        double found = 0;</span>
+<span class="nc" id="L371">        double miss = 0;</span>
+        try {
+            {
+<span class="nc" id="L374">                CallSnapshot last = this.getTimesFoundList.getLast();</span>
+
+<span class="nc bnc" id="L376" title="All 2 branches missed.">                if (this.getTimesFoundList.size() &gt; time) {</span>
+<span class="nc" id="L377">                    CallSnapshot lastBefore =</span>
+<span class="nc" id="L378">                        this.getTimesFoundList.get(this.getTimesFoundList.size() - (time + 1));</span>
+<span class="nc" id="L379">                    found = CallSnapshot.getTPS(lastBefore, last);</span>
+                }
+            }
+            {
+<span class="nc" id="L383">                CallSnapshot last = this.getTimesMissList.getLast();</span>
+
+<span class="nc bnc" id="L385" title="All 2 branches missed.">                if (this.getTimesMissList.size() &gt; time) {</span>
+<span class="nc" id="L386">                    CallSnapshot lastBefore =</span>
+<span class="nc" id="L387">                        this.getTimesMissList.get(this.getTimesMissList.size() - (time + 1));</span>
+<span class="nc" id="L388">                    miss = CallSnapshot.getTPS(lastBefore, last);</span>
+                }
+            }
+
+        } finally {
+<span class="nc" id="L393">            this.lockSampling.unlock();</span>
+<span class="nc" id="L394">        }</span>
+
+<span class="nc" id="L396">        return Double.toString(found + miss);</span>
+    }
+
+    private String getGetTransferedTps(int time) {
+<span class="nc" id="L400">        String result = &quot;&quot;;</span>
+<span class="nc" id="L401">        this.lockSampling.lock();</span>
+        try {
+<span class="nc" id="L403">            CallSnapshot last = this.transferedMsgCountList.getLast();</span>
+
+<span class="nc bnc" id="L405" title="All 2 branches missed.">            if (this.transferedMsgCountList.size() &gt; time) {</span>
+<span class="nc" id="L406">                CallSnapshot lastBefore =</span>
+<span class="nc" id="L407">                    this.transferedMsgCountList.get(this.transferedMsgCountList.size() - (time + 1));</span>
+<span class="nc" id="L408">                result += CallSnapshot.getTPS(lastBefore, last);</span>
+            }
+
+        } finally {
+<span class="nc" id="L412">            this.lockSampling.unlock();</span>
+<span class="nc" id="L413">        }</span>
+
+<span class="nc" id="L415">        return result;</span>
+    }
+
+    public HashMap&lt;String, String&gt; getRuntimeInfo() {
+<span class="nc" id="L419">        HashMap&lt;String, String&gt; result = new HashMap&lt;String, String&gt;(64);</span>
+
+<span class="nc" id="L421">        Long totalTimes = getPutMessageTimesTotal();</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">        if (0 == totalTimes) {</span>
+<span class="nc" id="L423">            totalTimes = 1L;</span>
+        }
+
+<span class="nc" id="L426">        result.put(&quot;bootTimestamp&quot;, String.valueOf(this.messageStoreBootTimestamp));</span>
+<span class="nc" id="L427">        result.put(&quot;runtime&quot;, this.getFormatRuntime());</span>
+<span class="nc" id="L428">        result.put(&quot;putMessageEntireTimeMax&quot;, String.valueOf(this.putMessageEntireTimeMax));</span>
+<span class="nc" id="L429">        result.put(&quot;putMessageTimesTotal&quot;, String.valueOf(totalTimes));</span>
+<span class="nc" id="L430">        result.put(&quot;putMessageSizeTotal&quot;, String.valueOf(this.getPutMessageSizeTotal()));</span>
+<span class="nc" id="L431">        result.put(&quot;putMessageDistributeTime&quot;,</span>
+<span class="nc" id="L432">            String.valueOf(this.getPutMessageDistributeTimeStringInfo(totalTimes)));</span>
+<span class="nc" id="L433">        result.put(&quot;putMessageAverageSize&quot;,</span>
+<span class="nc" id="L434">            String.valueOf(this.getPutMessageSizeTotal() / totalTimes.doubleValue()));</span>
+<span class="nc" id="L435">        result.put(&quot;dispatchMaxBuffer&quot;, String.valueOf(this.dispatchMaxBuffer));</span>
+<span class="nc" id="L436">        result.put(&quot;getMessageEntireTimeMax&quot;, String.valueOf(this.getMessageEntireTimeMax));</span>
+<span class="nc" id="L437">        result.put(&quot;putTps&quot;, String.valueOf(this.getPutTps()));</span>
+<span class="nc" id="L438">        result.put(&quot;getFoundTps&quot;, String.valueOf(this.getGetFoundTps()));</span>
+<span class="nc" id="L439">        result.put(&quot;getMissTps&quot;, String.valueOf(this.getGetMissTps()));</span>
+<span class="nc" id="L440">        result.put(&quot;getTotalTps&quot;, String.valueOf(this.getGetTotalTps()));</span>
+<span class="nc" id="L441">        result.put(&quot;getTransferedTps&quot;, String.valueOf(this.getGetTransferedTps()));</span>
+
+<span class="nc" id="L443">        return result;</span>
+    }
+
+    public void run() {
+<span class="fc" id="L447">        log.info(this.getServiceName() + &quot; service started&quot;);</span>
+
+<span class="fc bfc" id="L449" title="All 2 branches covered.">        while (!this.isStopped()) {</span>
+            try {
+<span class="fc" id="L451">                this.waitForRunning(FREQUENCY_OF_SAMPLING);</span>
+
+<span class="fc" id="L453">                this.sampling();</span>
+
+<span class="fc" id="L455">                this.printTps();</span>
+<span class="nc" id="L456">            } catch (Exception e) {</span>
+<span class="nc" id="L457">                log.warn(this.getServiceName() + &quot; service has exception. &quot;, e);</span>
+<span class="pc" id="L458">            }</span>
+        }
+
+<span class="fc" id="L461">        log.info(this.getServiceName() + &quot; service end&quot;);</span>
+<span class="fc" id="L462">    }</span>
+
+    @Override
+    public String getServiceName() {
+<span class="fc" id="L466">        return StoreStatsService.class.getSimpleName();</span>
+    }
+
+    private void sampling() {
+<span class="fc" id="L470">        this.lockSampling.lock();</span>
+        try {
+<span class="fc" id="L472">            this.putTimesList.add(new CallSnapshot(System.currentTimeMillis(), getPutMessageTimesTotal()));</span>
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">            if (this.putTimesList.size() &gt; (MAX_RECORDS_OF_SAMPLING + 1)) {</span>
+<span class="nc" id="L474">                this.putTimesList.removeFirst();</span>
+            }
+
+<span class="fc" id="L477">            this.getTimesFoundList.add(new CallSnapshot(System.currentTimeMillis(),</span>
+<span class="fc" id="L478">                this.getMessageTimesTotalFound.get()));</span>
+<span class="pc bpc" id="L479" title="1 of 2 branches missed.">            if (this.getTimesFoundList.size() &gt; (MAX_RECORDS_OF_SAMPLING + 1)) {</span>
+<span class="nc" id="L480">                this.getTimesFoundList.removeFirst();</span>
+            }
+
+<span class="fc" id="L483">            this.getTimesMissList.add(new CallSnapshot(System.currentTimeMillis(),</span>
+<span class="fc" id="L484">                this.getMessageTimesTotalMiss.get()));</span>
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">            if (this.getTimesMissList.size() &gt; (MAX_RECORDS_OF_SAMPLING + 1)) {</span>
+<span class="nc" id="L486">                this.getTimesMissList.removeFirst();</span>
+            }
+
+<span class="fc" id="L489">            this.transferedMsgCountList.add(new CallSnapshot(System.currentTimeMillis(),</span>
+<span class="fc" id="L490">                this.getMessageTransferedMsgCount.get()));</span>
+<span class="pc bpc" id="L491" title="1 of 2 branches missed.">            if (this.transferedMsgCountList.size() &gt; (MAX_RECORDS_OF_SAMPLING + 1)) {</span>
+<span class="nc" id="L492">                this.transferedMsgCountList.removeFirst();</span>
+            }
+
+        } finally {
+<span class="pc" id="L496">            this.lockSampling.unlock();</span>
+<span class="fc" id="L497">        }</span>
+<span class="fc" id="L498">    }</span>
+
+    private void printTps() {
+<span class="pc bpc" id="L501" title="1 of 2 branches missed.">        if (System.currentTimeMillis() &gt; (this.lastPrintTimestamp + printTPSInterval * 1000)) {</span>
+<span class="nc" id="L502">            this.lastPrintTimestamp = System.currentTimeMillis();</span>
+
+<span class="nc" id="L504">            log.info(&quot;[STORETPS] put_tps {} get_found_tps {} get_miss_tps {} get_transfered_tps {}&quot;,</span>
+<span class="nc" id="L505">                this.getPutTps(printTPSInterval),</span>
+<span class="nc" id="L506">                this.getGetFoundTps(printTPSInterval),</span>
+<span class="nc" id="L507">                this.getGetMissTps(printTPSInterval),</span>
+<span class="nc" id="L508">                this.getGetTransferedTps(printTPSInterval)</span>
+            );
+
+<span class="nc" id="L511">            final AtomicLong[] times = this.initPutMessageDistributeTime();</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">            if (null == times)</span>
+<span class="nc" id="L513">                return;</span>
+
+<span class="nc" id="L515">            final StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L516">            long totalPut = 0;</span>
+<span class="nc bnc" id="L517" title="All 2 branches missed.">            for (int i = 0; i &lt; times.length; i++) {</span>
+<span class="nc" id="L518">                long value = times[i].get();</span>
+<span class="nc" id="L519">                totalPut += value;</span>
+<span class="nc" id="L520">                sb.append(String.format(&quot;%s:%d&quot;, PUT_MESSAGE_ENTIRE_TIME_MAX_DESC[i], value));</span>
+<span class="nc" id="L521">                sb.append(&quot; &quot;);</span>
+            }
+
+<span class="nc" id="L524">            log.info(&quot;[PAGECACHERT] TotalPut {}, PutMessageDistributeTime {}&quot;, totalPut, sb.toString());</span>
+        }
+<span class="fc" id="L526">    }</span>
+
+    public AtomicLong getGetMessageTimesTotalFound() {
+<span class="nc" id="L529">        return getMessageTimesTotalFound;</span>
+    }
+
+    public AtomicLong getGetMessageTimesTotalMiss() {
+<span class="fc" id="L533">        return getMessageTimesTotalMiss;</span>
+    }
+
+    public AtomicLong getGetMessageTransferedMsgCount() {
+<span class="nc" id="L537">        return getMessageTransferedMsgCount;</span>
+    }
+
+    public AtomicLong getPutMessageFailedTimes() {
+<span class="nc" id="L541">        return putMessageFailedTimes;</span>
+    }
+
+    public AtomicLong getSinglePutMessageTopicSizeTotal(String topic) {
+<span class="fc" id="L545">        AtomicLong rs = putMessageTopicSizeTotal.get(topic);</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        if (null == rs) {</span>
+<span class="fc" id="L547">            rs = new AtomicLong(0);</span>
+<span class="fc" id="L548">            putMessageTopicSizeTotal.put(topic, rs);</span>
+        }
+<span class="fc" id="L550">        return rs;</span>
+    }
+
+    public AtomicLong getSinglePutMessageTopicTimesTotal(String topic) {
+<span class="fc" id="L554">        AtomicLong rs = putMessageTopicTimesTotal.get(topic);</span>
+<span class="fc bfc" id="L555" title="All 2 branches covered.">        if (null == rs) {</span>
+<span class="fc" id="L556">            rs = new AtomicLong(0);</span>
+<span class="fc" id="L557">            putMessageTopicTimesTotal.put(topic, rs);</span>
+        }
+<span class="fc" id="L559">        return rs;</span>
+    }
+
+    public Map&lt;String, AtomicLong&gt; getPutMessageTopicTimesTotal() {
+<span class="nc" id="L563">        return putMessageTopicTimesTotal;</span>
+    }
+
+    public Map&lt;String, AtomicLong&gt; getPutMessageTopicSizeTotal() {
+<span class="nc" id="L567">        return putMessageTopicSizeTotal;</span>
+    }
+
+    static class CallSnapshot {
+        public final long timestamp;
+        public final long callTimesTotal;
+
+<span class="fc" id="L574">        public CallSnapshot(long timestamp, long callTimesTotal) {</span>
+<span class="fc" id="L575">            this.timestamp = timestamp;</span>
+<span class="fc" id="L576">            this.callTimesTotal = callTimesTotal;</span>
+<span class="fc" id="L577">        }</span>
+
+        public static double getTPS(final CallSnapshot begin, final CallSnapshot end) {
+<span class="nc" id="L580">            long total = end.callTimesTotal - begin.callTimesTotal;</span>
+<span class="nc" id="L581">            Long time = end.timestamp - begin.timestamp;</span>
+
+<span class="nc" id="L583">            double tps = total / time.doubleValue();</span>
+
+<span class="nc" id="L585">            return tps * 1000;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

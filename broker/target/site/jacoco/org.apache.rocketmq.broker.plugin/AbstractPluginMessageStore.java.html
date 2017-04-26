@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractPluginMessageStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.plugin</a> &gt; <span class="el_source">AbstractPluginMessageStore.java</span></div><h1>AbstractPluginMessageStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.broker.plugin;
+
+import java.util.HashMap;
+import java.util.Set;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
+import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.MessageStore;
+import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.QueryMessageResult;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
+
+public abstract class AbstractPluginMessageStore implements MessageStore {
+<span class="nc" id="L32">    protected MessageStore next = null;</span>
+    protected MessageStorePluginContext context;
+
+<span class="nc" id="L35">    public AbstractPluginMessageStore(MessageStorePluginContext context, MessageStore next) {</span>
+<span class="nc" id="L36">        this.next = next;</span>
+<span class="nc" id="L37">        this.context = context;</span>
+<span class="nc" id="L38">    }</span>
+
+    @Override
+    public long getEarliestMessageTime() {
+<span class="nc" id="L42">        return next.getEarliestMessageTime();</span>
+    }
+
+    @Override
+    public long lockTimeMills() {
+<span class="nc" id="L47">        return next.lockTimeMills();</span>
+    }
+
+    @Override
+    public boolean isOSPageCacheBusy() {
+<span class="nc" id="L52">        return next.isOSPageCacheBusy();</span>
+    }
+
+    @Override
+    public boolean isTransientStorePoolDeficient() {
+<span class="nc" id="L57">        return next.isTransientStorePoolDeficient();</span>
+    }
+
+    @Override
+    public boolean load() {
+<span class="nc" id="L62">        return next.load();</span>
+    }
+
+    @Override
+    public void start() throws Exception {
+<span class="nc" id="L67">        next.start();</span>
+<span class="nc" id="L68">    }</span>
+
+    @Override
+    public void shutdown() {
+<span class="nc" id="L72">        next.shutdown();</span>
+<span class="nc" id="L73">    }</span>
+
+    @Override
+    public void destroy() {
+<span class="nc" id="L77">        next.destroy();</span>
+<span class="nc" id="L78">    }</span>
+
+    @Override
+    public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+<span class="nc" id="L82">        return next.putMessage(msg);</span>
+    }
+
+    @Override
+    public GetMessageResult getMessage(String group, String topic, int queueId, long offset,
+        int maxMsgNums, SubscriptionData subscriptionData) {
+<span class="nc" id="L88">        return next.getMessage(group, topic, queueId, offset, maxMsgNums, subscriptionData);</span>
+    }
+
+    @Override
+    public long getMaxOffsetInQuque(String topic, int queueId) {
+<span class="nc" id="L93">        return next.getMaxOffsetInQuque(topic, queueId);</span>
+    }
+
+    @Override
+    public long getMinOffsetInQuque(String topic, int queueId) {
+<span class="nc" id="L98">        return next.getMinOffsetInQuque(topic, queueId);</span>
+    }
+
+    @Override
+    public long getCommitLogOffsetInQueue(String topic, int queueId, long cqOffset) {
+<span class="nc" id="L103">        return next.getCommitLogOffsetInQueue(topic, queueId, cqOffset);</span>
+    }
+
+    @Override
+    public long getOffsetInQueueByTime(String topic, int queueId, long timestamp) {
+<span class="nc" id="L108">        return next.getOffsetInQueueByTime(topic, queueId, timestamp);</span>
+    }
+
+    @Override
+    public MessageExt lookMessageByOffset(long commitLogOffset) {
+<span class="nc" id="L113">        return next.lookMessageByOffset(commitLogOffset);</span>
+    }
+
+    @Override
+    public SelectMappedBufferResult selectOneMessageByOffset(long commitLogOffset) {
+<span class="nc" id="L118">        return next.selectOneMessageByOffset(commitLogOffset);</span>
+    }
+
+    @Override
+    public SelectMappedBufferResult selectOneMessageByOffset(long commitLogOffset, int msgSize) {
+<span class="nc" id="L123">        return next.selectOneMessageByOffset(commitLogOffset, msgSize);</span>
+    }
+
+    @Override
+    public String getRunningDataInfo() {
+<span class="nc" id="L128">        return next.getRunningDataInfo();</span>
+    }
+
+    @Override
+    public HashMap&lt;String, String&gt; getRuntimeInfo() {
+<span class="nc" id="L133">        return next.getRuntimeInfo();</span>
+    }
+
+    @Override
+    public long getMaxPhyOffset() {
+<span class="nc" id="L138">        return next.getMaxPhyOffset();</span>
+    }
+
+    @Override
+    public long getMinPhyOffset() {
+<span class="nc" id="L143">        return next.getMinPhyOffset();</span>
+    }
+
+    @Override
+    public long getEarliestMessageTime(String topic, int queueId) {
+<span class="nc" id="L148">        return next.getEarliestMessageTime(topic, queueId);</span>
+    }
+
+    @Override
+    public long getMessageStoreTimeStamp(String topic, int queueId, long offset) {
+<span class="nc" id="L153">        return next.getMessageStoreTimeStamp(topic, queueId, offset);</span>
+    }
+
+    @Override
+    public long getMessageTotalInQueue(String topic, int queueId) {
+<span class="nc" id="L158">        return next.getMessageTotalInQueue(topic, queueId);</span>
+    }
+
+    @Override
+    public SelectMappedBufferResult getCommitLogData(long offset) {
+<span class="nc" id="L163">        return next.getCommitLogData(offset);</span>
+    }
+
+    @Override
+    public boolean appendToCommitLog(long startOffset, byte[] data) {
+<span class="nc" id="L168">        return next.appendToCommitLog(startOffset, data);</span>
+    }
+
+    @Override
+    public void excuteDeleteFilesManualy() {
+<span class="nc" id="L173">        next.excuteDeleteFilesManualy();</span>
+<span class="nc" id="L174">    }</span>
+
+    @Override
+    public QueryMessageResult queryMessage(String topic, String key, int maxNum, long begin,
+        long end) {
+<span class="nc" id="L179">        return next.queryMessage(topic, key, maxNum, begin, end);</span>
+    }
+
+    @Override
+    public void updateHaMasterAddress(String newAddr) {
+<span class="nc" id="L184">        next.updateHaMasterAddress(newAddr);</span>
+<span class="nc" id="L185">    }</span>
+
+    @Override
+    public long slaveFallBehindMuch() {
+<span class="nc" id="L189">        return next.slaveFallBehindMuch();</span>
+    }
+
+    @Override
+    public long now() {
+<span class="nc" id="L194">        return next.now();</span>
+    }
+
+    @Override
+    public int cleanUnusedTopic(Set&lt;String&gt; topics) {
+<span class="nc" id="L199">        return next.cleanUnusedTopic(topics);</span>
+    }
+
+    @Override
+    public void cleanExpiredConsumerQueue() {
+<span class="nc" id="L204">        next.cleanExpiredConsumerQueue();</span>
+<span class="nc" id="L205">    }</span>
+
+    @Override
+    public boolean checkInDiskByConsumeOffset(String topic, int queueId, long consumeOffset) {
+<span class="nc" id="L209">        return next.checkInDiskByConsumeOffset(topic, queueId, consumeOffset);</span>
+    }
+
+    @Override
+    public long dispatchBehindBytes() {
+<span class="nc" id="L214">        return next.dispatchBehindBytes();</span>
+    }
+
+    @Override
+    public long flush() {
+<span class="nc" id="L219">        return next.flush();</span>
+    }
+
+    @Override
+    public boolean resetWriteOffset(long phyOffset) {
+<span class="nc" id="L224">        return next.resetWriteOffset(phyOffset);</span>
+    }
+
+    @Override
+    public long getConfirmOffset() {
+<span class="nc" id="L229">        return next.getConfirmOffset();</span>
+    }
+
+    @Override
+    public void setConfirmOffset(long phyOffset) {
+<span class="nc" id="L234">        next.setConfirmOffset(phyOffset);</span>
+<span class="nc" id="L235">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

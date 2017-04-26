@@ -1,0 +1,477 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConsumeQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">ConsumeQueue.java</span></div><h1>ConsumeQueue.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.List;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class ConsumeQueue {
+
+    public static final int CQ_STORE_UNIT_SIZE = 20;
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+<span class="fc" id="L30">    private static final Logger LOG_ERROR = LoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);</span>
+
+    private final DefaultMessageStore defaultMessageStore;
+
+    private final MappedFileQueue mappedFileQueue;
+    private final String topic;
+    private final int queueId;
+    private final ByteBuffer byteBufferIndex;
+
+    private final String storePath;
+    private final int mappedFileSize;
+<span class="fc" id="L41">    private long maxPhysicOffset = -1;</span>
+<span class="fc" id="L42">    private volatile long minLogicOffset = 0;</span>
+
+    public ConsumeQueue(
+        final String topic,
+        final int queueId,
+        final String storePath,
+        final int mappedFileSize,
+<span class="fc" id="L49">        final DefaultMessageStore defaultMessageStore) {</span>
+<span class="fc" id="L50">        this.storePath = storePath;</span>
+<span class="fc" id="L51">        this.mappedFileSize = mappedFileSize;</span>
+<span class="fc" id="L52">        this.defaultMessageStore = defaultMessageStore;</span>
+
+<span class="fc" id="L54">        this.topic = topic;</span>
+<span class="fc" id="L55">        this.queueId = queueId;</span>
+
+<span class="fc" id="L57">        String queueDir = this.storePath</span>
+            + File.separator + topic
+            + File.separator + queueId;
+
+<span class="fc" id="L61">        this.mappedFileQueue = new MappedFileQueue(queueDir, mappedFileSize, null);</span>
+
+<span class="fc" id="L63">        this.byteBufferIndex = ByteBuffer.allocate(CQ_STORE_UNIT_SIZE);</span>
+<span class="fc" id="L64">    }</span>
+
+    public boolean load() {
+<span class="nc" id="L67">        boolean result = this.mappedFileQueue.load();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        log.info(&quot;load consume queue &quot; + this.topic + &quot;-&quot; + this.queueId + &quot; &quot; + (result ? &quot;OK&quot; : &quot;Failed&quot;));</span>
+<span class="nc" id="L69">        return result;</span>
+    }
+
+    public void recover() {
+<span class="nc" id="L73">        final List&lt;MappedFile&gt; mappedFiles = this.mappedFileQueue.getMappedFiles();</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (!mappedFiles.isEmpty()) {</span>
+
+<span class="nc" id="L76">            int index = mappedFiles.size() - 3;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            if (index &lt; 0)</span>
+<span class="nc" id="L78">                index = 0;</span>
+
+<span class="nc" id="L80">            int mappedFileSizeLogics = this.mappedFileSize;</span>
+<span class="nc" id="L81">            MappedFile mappedFile = mappedFiles.get(index);</span>
+<span class="nc" id="L82">            ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();</span>
+<span class="nc" id="L83">            long processOffset = mappedFile.getFileFromOffset();</span>
+<span class="nc" id="L84">            long mappedFileOffset = 0;</span>
+            while (true) {
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                for (int i = 0; i &lt; mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {</span>
+<span class="nc" id="L87">                    long offset = byteBuffer.getLong();</span>
+<span class="nc" id="L88">                    int size = byteBuffer.getInt();</span>
+<span class="nc" id="L89">                    long tagsCode = byteBuffer.getLong();</span>
+
+<span class="nc bnc" id="L91" title="All 4 branches missed.">                    if (offset &gt;= 0 &amp;&amp; size &gt; 0) {</span>
+<span class="nc" id="L92">                        mappedFileOffset = i + CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L93">                        this.maxPhysicOffset = offset;</span>
+                    } else {
+<span class="nc" id="L95">                        log.info(&quot;recover current consume queue file over,  &quot; + mappedFile.getFileName() + &quot; &quot;</span>
+                            + offset + &quot; &quot; + size + &quot; &quot; + tagsCode);
+<span class="nc" id="L97">                        break;</span>
+                    }
+                }
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">                if (mappedFileOffset == mappedFileSizeLogics) {</span>
+<span class="nc" id="L102">                    index++;</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                    if (index &gt;= mappedFiles.size()) {</span>
+
+<span class="nc" id="L105">                        log.info(&quot;recover last consume queue file over, last maped file &quot;</span>
+<span class="nc" id="L106">                            + mappedFile.getFileName());</span>
+<span class="nc" id="L107">                        break;</span>
+                    } else {
+<span class="nc" id="L109">                        mappedFile = mappedFiles.get(index);</span>
+<span class="nc" id="L110">                        byteBuffer = mappedFile.sliceByteBuffer();</span>
+<span class="nc" id="L111">                        processOffset = mappedFile.getFileFromOffset();</span>
+<span class="nc" id="L112">                        mappedFileOffset = 0;</span>
+<span class="nc" id="L113">                        log.info(&quot;recover next consume queue file, &quot; + mappedFile.getFileName());</span>
+                    }
+                } else {
+<span class="nc" id="L116">                    log.info(&quot;recover current consume queue queue over &quot; + mappedFile.getFileName() + &quot; &quot;</span>
+                        + (processOffset + mappedFileOffset));
+<span class="nc" id="L118">                    break;</span>
+                }
+            }
+
+<span class="nc" id="L122">            processOffset += mappedFileOffset;</span>
+<span class="nc" id="L123">            this.mappedFileQueue.setFlushedWhere(processOffset);</span>
+<span class="nc" id="L124">            this.mappedFileQueue.setCommittedWhere(processOffset);</span>
+<span class="nc" id="L125">            this.mappedFileQueue.truncateDirtyFiles(processOffset);</span>
+        }
+<span class="nc" id="L127">    }</span>
+
+    public long getOffsetInQueueByTime(final long timestamp) {
+<span class="nc" id="L130">        MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+<span class="nc" id="L132">            long offset = 0;</span>
+<span class="nc" id="L133">            int low =</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                minLogicOffset &gt; mappedFile.getFileFromOffset() ? (int) (minLogicOffset - mappedFile</span>
+<span class="nc" id="L135">                    .getFileFromOffset()) : 0;</span>
+<span class="nc" id="L136">            int high = 0;</span>
+<span class="nc" id="L137">            int midOffset = -1, targetOffset = -1, leftOffset = -1, rightOffset = -1;</span>
+<span class="nc" id="L138">            long leftIndexValue = -1L, rightIndexValue = -1L;</span>
+<span class="nc" id="L139">            long minPhysicOffset = this.defaultMessageStore.getMinPhyOffset();</span>
+<span class="nc" id="L140">            SelectMappedBufferResult sbr = mappedFile.selectMappedBuffer(0);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (null != sbr) {</span>
+<span class="nc" id="L142">                ByteBuffer byteBuffer = sbr.getByteBuffer();</span>
+<span class="nc" id="L143">                high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;</span>
+                try {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">                    while (high &gt;= low) {</span>
+<span class="nc" id="L146">                        midOffset = (low + high) / (2 * CQ_STORE_UNIT_SIZE) * CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L147">                        byteBuffer.position(midOffset);</span>
+<span class="nc" id="L148">                        long phyOffset = byteBuffer.getLong();</span>
+<span class="nc" id="L149">                        int size = byteBuffer.getInt();</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                        if (phyOffset &lt; minPhysicOffset) {</span>
+<span class="nc" id="L151">                            low = midOffset + CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L152">                            leftOffset = midOffset;</span>
+<span class="nc" id="L153">                            continue;</span>
+                        }
+
+<span class="nc" id="L156">                        long storeTime =</span>
+<span class="nc" id="L157">                            this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                        if (storeTime &lt; 0) {</span>
+<span class="nc" id="L159">                            return 0;</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">                        } else if (storeTime == timestamp) {</span>
+<span class="nc" id="L161">                            targetOffset = midOffset;</span>
+<span class="nc" id="L162">                            break;</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                        } else if (storeTime &gt; timestamp) {</span>
+<span class="nc" id="L164">                            high = midOffset - CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L165">                            rightOffset = midOffset;</span>
+<span class="nc" id="L166">                            rightIndexValue = storeTime;</span>
+                        } else {
+<span class="nc" id="L168">                            low = midOffset + CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L169">                            leftOffset = midOffset;</span>
+<span class="nc" id="L170">                            leftIndexValue = storeTime;</span>
+                        }
+<span class="nc" id="L172">                    }</span>
+
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                    if (targetOffset != -1) {</span>
+
+<span class="nc" id="L176">                        offset = targetOffset;</span>
+                    } else {
+<span class="nc bnc" id="L178" title="All 2 branches missed.">                        if (leftIndexValue == -1) {</span>
+
+<span class="nc" id="L180">                            offset = rightOffset;</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                        } else if (rightIndexValue == -1) {</span>
+
+<span class="nc" id="L183">                            offset = leftOffset;</span>
+                        } else {
+<span class="nc" id="L185">                            offset =</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">                                Math.abs(timestamp - leftIndexValue) &gt; Math.abs(timestamp</span>
+                                    - rightIndexValue) ? rightOffset : leftOffset;
+                        }
+                    }
+
+<span class="nc" id="L191">                    return (mappedFile.getFileFromOffset() + offset) / CQ_STORE_UNIT_SIZE;</span>
+                } finally {
+<span class="nc" id="L193">                    sbr.release();</span>
+                }
+            }
+        }
+<span class="nc" id="L197">        return 0;</span>
+    }
+
+    public void truncateDirtyLogicFiles(long phyOffet) {
+
+<span class="nc" id="L202">        int logicFileSize = this.mappedFileSize;</span>
+
+<span class="nc" id="L204">        this.maxPhysicOffset = phyOffet - 1;</span>
+
+        while (true) {
+<span class="nc" id="L207">            MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">            if (mappedFile != null) {</span>
+<span class="nc" id="L209">                ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();</span>
+
+<span class="nc" id="L211">                mappedFile.setWrotePosition(0);</span>
+<span class="nc" id="L212">                mappedFile.setCommittedPosition(0);</span>
+<span class="nc" id="L213">                mappedFile.setFlushedPosition(0);</span>
+
+<span class="nc bnc" id="L215" title="All 2 branches missed.">                for (int i = 0; i &lt; logicFileSize; i += CQ_STORE_UNIT_SIZE) {</span>
+<span class="nc" id="L216">                    long offset = byteBuffer.getLong();</span>
+<span class="nc" id="L217">                    int size = byteBuffer.getInt();</span>
+<span class="nc" id="L218">                    byteBuffer.getLong();</span>
+
+<span class="nc bnc" id="L220" title="All 2 branches missed.">                    if (0 == i) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                        if (offset &gt;= phyOffet) {</span>
+<span class="nc" id="L222">                            this.mappedFileQueue.deleteLastMappedFile();</span>
+<span class="nc" id="L223">                            break;</span>
+                        } else {
+<span class="nc" id="L225">                            int pos = i + CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L226">                            mappedFile.setWrotePosition(pos);</span>
+<span class="nc" id="L227">                            mappedFile.setCommittedPosition(pos);</span>
+<span class="nc" id="L228">                            mappedFile.setFlushedPosition(pos);</span>
+<span class="nc" id="L229">                            this.maxPhysicOffset = offset;</span>
+<span class="nc" id="L230">                        }</span>
+                    } else {
+
+<span class="nc bnc" id="L233" title="All 4 branches missed.">                        if (offset &gt;= 0 &amp;&amp; size &gt; 0) {</span>
+
+<span class="nc bnc" id="L235" title="All 2 branches missed.">                            if (offset &gt;= phyOffet) {</span>
+<span class="nc" id="L236">                                return;</span>
+                            }
+
+<span class="nc" id="L239">                            int pos = i + CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L240">                            mappedFile.setWrotePosition(pos);</span>
+<span class="nc" id="L241">                            mappedFile.setCommittedPosition(pos);</span>
+<span class="nc" id="L242">                            mappedFile.setFlushedPosition(pos);</span>
+<span class="nc" id="L243">                            this.maxPhysicOffset = offset;</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                            if (pos == logicFileSize) {</span>
+<span class="nc" id="L246">                                return;</span>
+                            }
+<span class="nc" id="L248">                        } else {</span>
+<span class="nc" id="L249">                            return;</span>
+                        }
+                    }
+                }
+            } else {
+                break;
+            }
+<span class="nc" id="L256">        }</span>
+<span class="nc" id="L257">    }</span>
+
+    public long getLastOffset() {
+<span class="nc" id="L260">        long lastOffset = -1;</span>
+
+<span class="nc" id="L262">        int logicFileSize = this.mappedFileSize;</span>
+
+<span class="nc" id="L264">        MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+
+<span class="nc" id="L267">            int position = mappedFile.getWrotePosition() - CQ_STORE_UNIT_SIZE;</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            if (position &lt; 0)</span>
+<span class="nc" id="L269">                position = 0;</span>
+
+<span class="nc" id="L271">            ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();</span>
+<span class="nc" id="L272">            byteBuffer.position(position);</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">            for (int i = 0; i &lt; logicFileSize; i += CQ_STORE_UNIT_SIZE) {</span>
+<span class="nc" id="L274">                long offset = byteBuffer.getLong();</span>
+<span class="nc" id="L275">                int size = byteBuffer.getInt();</span>
+<span class="nc" id="L276">                byteBuffer.getLong();</span>
+
+<span class="nc bnc" id="L278" title="All 4 branches missed.">                if (offset &gt;= 0 &amp;&amp; size &gt; 0) {</span>
+<span class="nc" id="L279">                    lastOffset = offset + size;</span>
+                } else {
+                    break;
+                }
+            }
+        }
+
+<span class="nc" id="L286">        return lastOffset;</span>
+    }
+
+    public boolean flush(final int flushLeastPages) {
+<span class="fc" id="L290">        return this.mappedFileQueue.flush(flushLeastPages);</span>
+    }
+
+    public int deleteExpiredFile(long offset) {
+<span class="nc" id="L294">        int cnt = this.mappedFileQueue.deleteExpiredFileByOffset(offset, CQ_STORE_UNIT_SIZE);</span>
+<span class="nc" id="L295">        this.correctMinOffset(offset);</span>
+<span class="nc" id="L296">        return cnt;</span>
+    }
+
+    public void correctMinOffset(long phyMinOffset) {
+<span class="nc" id="L300">        MappedFile mappedFile = this.mappedFileQueue.getFirstMappedFile();</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+<span class="nc" id="L302">            SelectMappedBufferResult result = mappedFile.selectMappedBuffer(0);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            if (result != null) {</span>
+                try {
+
+<span class="nc bnc" id="L306" title="All 2 branches missed.">                    for (int i = 0; i &lt; result.getSize(); i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {</span>
+<span class="nc" id="L307">                        long offsetPy = result.getByteBuffer().getLong();</span>
+<span class="nc" id="L308">                        result.getByteBuffer().getInt();</span>
+<span class="nc" id="L309">                        result.getByteBuffer().getLong();</span>
+
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                        if (offsetPy &gt;= phyMinOffset) {</span>
+<span class="nc" id="L312">                            this.minLogicOffset = result.getMappedFile().getFileFromOffset() + i;</span>
+<span class="nc" id="L313">                            log.info(&quot;compute logics min offset: &quot; + this.getMinOffsetInQueue() + &quot;, topic: &quot;</span>
+                                + this.topic + &quot;, queueId: &quot; + this.queueId);
+<span class="nc" id="L315">                            break;</span>
+                        }
+                    }
+<span class="nc" id="L318">                } catch (Exception e) {</span>
+<span class="nc" id="L319">                    e.printStackTrace();</span>
+                } finally {
+<span class="nc" id="L321">                    result.release();</span>
+<span class="nc" id="L322">                }</span>
+            }
+        }
+<span class="nc" id="L325">    }</span>
+
+    public long getMinOffsetInQueue() {
+<span class="fc" id="L328">        return this.minLogicOffset / CQ_STORE_UNIT_SIZE;</span>
+    }
+
+    public void putMessagePositionInfoWrapper(long offset, int size, long tagsCode, long storeTimestamp,
+        long logicOffset) {
+<span class="nc" id="L333">        final int maxRetries = 30;</span>
+<span class="nc" id="L334">        boolean canWrite = this.defaultMessageStore.getRunningFlags().isWriteable();</span>
+<span class="nc bnc" id="L335" title="All 4 branches missed.">        for (int i = 0; i &lt; maxRetries &amp;&amp; canWrite; i++) {</span>
+<span class="nc" id="L336">            boolean result = this.putMessagePositionInfo(offset, size, tagsCode, logicOffset);</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            if (result) {</span>
+<span class="nc" id="L338">                this.defaultMessageStore.getStoreCheckpoint().setLogicsMsgTimestamp(storeTimestamp);</span>
+<span class="nc" id="L339">                return;</span>
+            } else {
+                // XXX: warn and notify me
+<span class="nc" id="L342">                log.warn(&quot;[BUG]put commit log position info to &quot; + topic + &quot;:&quot; + queueId + &quot; &quot; + offset</span>
+                    + &quot; failed, retry &quot; + i + &quot; times&quot;);
+
+                try {
+<span class="nc" id="L346">                    Thread.sleep(1000);</span>
+<span class="nc" id="L347">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L348">                    log.warn(&quot;&quot;, e);</span>
+<span class="nc" id="L349">                }</span>
+            }
+        }
+
+        // XXX: warn and notify me
+<span class="nc" id="L354">        log.error(&quot;[BUG]consume queue can not write, {} {}&quot;, this.topic, this.queueId);</span>
+<span class="nc" id="L355">        this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();</span>
+<span class="nc" id="L356">    }</span>
+
+    private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
+        final long cqOffset) {
+
+<span class="nc bnc" id="L361" title="All 2 branches missed.">        if (offset &lt;= this.maxPhysicOffset) {</span>
+<span class="nc" id="L362">            return true;</span>
+        }
+
+<span class="nc" id="L365">        this.byteBufferIndex.flip();</span>
+<span class="nc" id="L366">        this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);</span>
+<span class="nc" id="L367">        this.byteBufferIndex.putLong(offset);</span>
+<span class="nc" id="L368">        this.byteBufferIndex.putInt(size);</span>
+<span class="nc" id="L369">        this.byteBufferIndex.putLong(tagsCode);</span>
+
+<span class="nc" id="L371">        final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;</span>
+
+<span class="nc" id="L373">        MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+
+<span class="nc bnc" id="L376" title="All 6 branches missed.">            if (mappedFile.isFirstCreateInQueue() &amp;&amp; cqOffset != 0 &amp;&amp; mappedFile.getWrotePosition() == 0) {</span>
+<span class="nc" id="L377">                this.minLogicOffset = expectLogicOffset;</span>
+<span class="nc" id="L378">                this.mappedFileQueue.setFlushedWhere(expectLogicOffset);</span>
+<span class="nc" id="L379">                this.mappedFileQueue.setCommittedWhere(expectLogicOffset);</span>
+<span class="nc" id="L380">                this.fillPreBlank(mappedFile, expectLogicOffset);</span>
+<span class="nc" id="L381">                log.info(&quot;fill pre blank space &quot; + mappedFile.getFileName() + &quot; &quot; + expectLogicOffset + &quot; &quot;</span>
+<span class="nc" id="L382">                    + mappedFile.getWrotePosition());</span>
+            }
+
+<span class="nc bnc" id="L385" title="All 2 branches missed.">            if (cqOffset != 0) {</span>
+<span class="nc" id="L386">                long currentLogicOffset = mappedFile.getWrotePosition() + mappedFile.getFileFromOffset();</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                if (expectLogicOffset != currentLogicOffset) {</span>
+<span class="nc" id="L388">                    LOG_ERROR.warn(</span>
+                        &quot;[BUG]logic queue order maybe wrong, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}&quot;,
+<span class="nc" id="L390">                        expectLogicOffset,</span>
+<span class="nc" id="L391">                        currentLogicOffset,</span>
+                        this.topic,
+<span class="nc" id="L393">                        this.queueId,</span>
+<span class="nc" id="L394">                        expectLogicOffset - currentLogicOffset</span>
+                    );
+                }
+            }
+<span class="nc" id="L398">            this.maxPhysicOffset = offset;</span>
+<span class="nc" id="L399">            return mappedFile.appendMessage(this.byteBufferIndex.array());</span>
+        }
+<span class="nc" id="L401">        return false;</span>
+    }
+
+    private void fillPreBlank(final MappedFile mappedFile, final long untilWhere) {
+<span class="nc" id="L405">        ByteBuffer byteBuffer = ByteBuffer.allocate(CQ_STORE_UNIT_SIZE);</span>
+<span class="nc" id="L406">        byteBuffer.putLong(0L);</span>
+<span class="nc" id="L407">        byteBuffer.putInt(Integer.MAX_VALUE);</span>
+<span class="nc" id="L408">        byteBuffer.putLong(0L);</span>
+
+<span class="nc" id="L410">        int until = (int) (untilWhere % this.mappedFileQueue.getMappedFileSize());</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">        for (int i = 0; i &lt; until; i += CQ_STORE_UNIT_SIZE) {</span>
+<span class="nc" id="L412">            mappedFile.appendMessage(byteBuffer.array());</span>
+        }
+<span class="nc" id="L414">    }</span>
+
+    public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
+<span class="fc" id="L417">        int mappedFileSize = this.mappedFileSize;</span>
+<span class="fc" id="L418">        long offset = startIndex * CQ_STORE_UNIT_SIZE;</span>
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">        if (offset &gt;= this.getMinLogicOffset()) {</span>
+<span class="fc" id="L420">            MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);</span>
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">            if (mappedFile != null) {</span>
+<span class="nc" id="L422">                SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));</span>
+<span class="nc" id="L423">                return result;</span>
+            }
+        }
+<span class="fc" id="L426">        return null;</span>
+    }
+
+    public long getMinLogicOffset() {
+<span class="fc" id="L430">        return minLogicOffset;</span>
+    }
+
+    public void setMinLogicOffset(long minLogicOffset) {
+<span class="nc" id="L434">        this.minLogicOffset = minLogicOffset;</span>
+<span class="nc" id="L435">    }</span>
+
+    public long rollNextFile(final long index) {
+<span class="nc" id="L438">        int mappedFileSize = this.mappedFileSize;</span>
+<span class="nc" id="L439">        int totalUnitsInFile = mappedFileSize / CQ_STORE_UNIT_SIZE;</span>
+<span class="nc" id="L440">        return index + totalUnitsInFile - index % totalUnitsInFile;</span>
+    }
+
+    public String getTopic() {
+<span class="nc" id="L444">        return topic;</span>
+    }
+
+    public int getQueueId() {
+<span class="nc" id="L448">        return queueId;</span>
+    }
+
+    public long getMaxPhysicOffset() {
+<span class="nc" id="L452">        return maxPhysicOffset;</span>
+    }
+
+    public void setMaxPhysicOffset(long maxPhysicOffset) {
+<span class="nc" id="L456">        this.maxPhysicOffset = maxPhysicOffset;</span>
+<span class="nc" id="L457">    }</span>
+
+    public void destroy() {
+<span class="fc" id="L460">        this.maxPhysicOffset = -1;</span>
+<span class="fc" id="L461">        this.minLogicOffset = 0;</span>
+<span class="fc" id="L462">        this.mappedFileQueue.destroy();</span>
+<span class="fc" id="L463">    }</span>
+
+    public long getMessageTotalInQueue() {
+<span class="nc" id="L466">        return this.getMaxOffsetInQueue() - this.getMinOffsetInQueue();</span>
+    }
+
+    public long getMaxOffsetInQueue() {
+<span class="fc" id="L470">        return this.mappedFileQueue.getMaxOffset() / CQ_STORE_UNIT_SIZE;</span>
+    }
+
+    public void checkSelf() {
+<span class="nc" id="L474">        mappedFileQueue.checkSelf();</span>
+<span class="nc" id="L475">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

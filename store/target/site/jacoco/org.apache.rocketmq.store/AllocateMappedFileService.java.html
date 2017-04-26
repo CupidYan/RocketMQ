@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AllocateMappedFileService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">AllocateMappedFileService.java</span></div><h1>AllocateMappedFileService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ServiceLoader;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import org.apache.rocketmq.common.ServiceThread;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.store.config.BrokerRole;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Create MappedFile in advance
+ */
+public class AllocateMappedFileService extends ServiceThread {
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+<span class="fc" id="L38">    private static int waitTimeOut = 1000 * 5;</span>
+<span class="fc" id="L39">    private ConcurrentHashMap&lt;String, AllocateRequest&gt; requestTable =</span>
+        new ConcurrentHashMap&lt;String, AllocateRequest&gt;();
+<span class="fc" id="L41">    private PriorityBlockingQueue&lt;AllocateRequest&gt; requestQueue =</span>
+        new PriorityBlockingQueue&lt;AllocateRequest&gt;();
+<span class="fc" id="L43">    private volatile boolean hasException = false;</span>
+    private DefaultMessageStore messageStore;
+
+<span class="fc" id="L46">    public AllocateMappedFileService(DefaultMessageStore messageStore) {</span>
+<span class="fc" id="L47">        this.messageStore = messageStore;</span>
+<span class="fc" id="L48">    }</span>
+
+    public MappedFile putRequestAndReturnMappedFile(String nextFilePath, String nextNextFilePath, int fileSize) {
+<span class="fc" id="L51">        int canSubmitRequests = 2;</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (this.messageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">            if (this.messageStore.getMessageStoreConfig().isFastFailIfNoBufferInStorePool()</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">                &amp;&amp; BrokerRole.SLAVE != this.messageStore.getMessageStoreConfig().getBrokerRole()) { //if broker is slave, don't fast fail even no buffer in pool</span>
+<span class="nc" id="L55">                canSubmitRequests = this.messageStore.getTransientStorePool().remainBufferNumbs() - this.requestQueue.size();</span>
+            }
+        }
+
+<span class="fc" id="L59">        AllocateRequest nextReq = new AllocateRequest(nextFilePath, fileSize);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        boolean nextPutOK = this.requestTable.putIfAbsent(nextFilePath, nextReq) == null;</span>
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (nextPutOK) {</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (canSubmitRequests &lt;= 0) {</span>
+<span class="nc" id="L64">                log.warn(&quot;[NOTIFYME]TransientStorePool is not enough, so create mapped file error, &quot; +</span>
+<span class="nc" id="L65">                    &quot;RequestQueueSize : {}, StorePoolSize: {}&quot;, this.requestQueue.size(), this.messageStore.getTransientStorePool().remainBufferNumbs());</span>
+<span class="nc" id="L66">                this.requestTable.remove(nextFilePath);</span>
+<span class="nc" id="L67">                return null;</span>
+            }
+<span class="fc" id="L69">            boolean offerOK = this.requestQueue.offer(nextReq);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (!offerOK) {</span>
+<span class="nc" id="L71">                log.warn(&quot;never expected here, add a request to preallocate queue failed&quot;);</span>
+            }
+<span class="fc" id="L73">            canSubmitRequests--;</span>
+        }
+
+<span class="fc" id="L76">        AllocateRequest nextNextReq = new AllocateRequest(nextNextFilePath, fileSize);</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        boolean nextNextPutOK = this.requestTable.putIfAbsent(nextNextFilePath, nextNextReq) == null;</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (nextNextPutOK) {</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">            if (canSubmitRequests &lt;= 0) {</span>
+<span class="nc" id="L80">                log.warn(&quot;[NOTIFYME]TransientStorePool is not enough, so skip preallocate mapped file, &quot; +</span>
+<span class="nc" id="L81">                    &quot;RequestQueueSize : {}, StorePoolSize: {}&quot;, this.requestQueue.size(), this.messageStore.getTransientStorePool().remainBufferNumbs());</span>
+<span class="nc" id="L82">                this.requestTable.remove(nextNextFilePath);</span>
+            } else {
+<span class="fc" id="L84">                boolean offerOK = this.requestQueue.offer(nextNextReq);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                if (!offerOK) {</span>
+<span class="nc" id="L86">                    log.warn(&quot;never expected here, add a request to preallocate queue failed&quot;);</span>
+                }
+            }
+        }
+
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (hasException) {</span>
+<span class="nc" id="L92">            log.warn(this.getServiceName() + &quot; service has exception. so return null&quot;);</span>
+<span class="nc" id="L93">            return null;</span>
+        }
+
+<span class="fc" id="L96">        AllocateRequest result = this.requestTable.get(nextFilePath);</span>
+        try {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (result != null) {</span>
+<span class="fc" id="L99">                boolean waitOK = result.getCountDownLatch().await(waitTimeOut, TimeUnit.MILLISECONDS);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                if (!waitOK) {</span>
+<span class="nc" id="L101">                    log.warn(&quot;create mmap timeout &quot; + result.getFilePath() + &quot; &quot; + result.getFileSize());</span>
+<span class="nc" id="L102">                    return null;</span>
+                } else {
+<span class="fc" id="L104">                    this.requestTable.remove(nextFilePath);</span>
+<span class="fc" id="L105">                    return result.getMappedFile();</span>
+                }
+            } else {
+<span class="nc" id="L108">                log.error(&quot;find preallocate mmap failed, this never happen&quot;);</span>
+            }
+<span class="nc" id="L110">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L111">            log.warn(this.getServiceName() + &quot; service has exception. &quot;, e);</span>
+<span class="nc" id="L112">        }</span>
+
+<span class="nc" id="L114">        return null;</span>
+    }
+
+    @Override
+    public String getServiceName() {
+<span class="fc" id="L119">        return AllocateMappedFileService.class.getSimpleName();</span>
+    }
+
+    public void shutdown() {
+<span class="fc" id="L123">        this.stopped = true;</span>
+<span class="fc" id="L124">        this.thread.interrupt();</span>
+
+        try {
+<span class="fc" id="L127">            this.thread.join(this.getJointime());</span>
+<span class="nc" id="L128">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L129">            e.printStackTrace();</span>
+<span class="fc" id="L130">        }</span>
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (AllocateRequest req : this.requestTable.values()) {</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            if (req.mappedFile != null) {</span>
+<span class="fc" id="L134">                log.info(&quot;delete pre allocated maped file, {}&quot;, req.mappedFile.getFileName());</span>
+<span class="fc" id="L135">                req.mappedFile.destroy(1000);</span>
+            }
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">    }</span>
+
+    public void run() {
+<span class="fc" id="L141">        log.info(this.getServiceName() + &quot; service started&quot;);</span>
+
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">        while (!this.isStopped() &amp;&amp; this.mmapOperation()) {</span>
+
+        }
+<span class="fc" id="L146">        log.info(this.getServiceName() + &quot; service end&quot;);</span>
+<span class="fc" id="L147">    }</span>
+
+    /**
+     * Only interrupted by the external thread, will return false
+     */
+    private boolean mmapOperation() {
+<span class="fc" id="L153">        boolean isSuccess = false;</span>
+<span class="fc" id="L154">        AllocateRequest req = null;</span>
+        try {
+<span class="fc" id="L156">            req = this.requestQueue.take();</span>
+<span class="fc" id="L157">            AllocateRequest expectedRequest = this.requestTable.get(req.getFilePath());</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">            if (null == expectedRequest) {</span>
+<span class="nc" id="L159">                log.warn(&quot;this mmap request expired, maybe cause timeout &quot; + req.getFilePath() + &quot; &quot;</span>
+<span class="nc" id="L160">                    + req.getFileSize());</span>
+<span class="nc" id="L161">                return true;</span>
+            }
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (expectedRequest != req) {</span>
+<span class="nc" id="L164">                log.warn(&quot;never expected here,  maybe cause timeout &quot; + req.getFilePath() + &quot; &quot;</span>
+<span class="nc" id="L165">                    + req.getFileSize() + &quot;, req:&quot; + req + &quot;, expectedRequest:&quot; + expectedRequest);</span>
+<span class="nc" id="L166">                return true;</span>
+            }
+
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">            if (req.getMappedFile() == null) {</span>
+<span class="fc" id="L170">                long beginTime = System.currentTimeMillis();</span>
+
+                MappedFile mappedFile;
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                if (messageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {</span>
+                    try {
+<span class="nc" id="L175">                        mappedFile = ServiceLoader.load(MappedFile.class).iterator().next();</span>
+<span class="nc" id="L176">                        mappedFile.init(req.getFilePath(), req.getFileSize(), messageStore.getTransientStorePool());</span>
+<span class="nc" id="L177">                    } catch (RuntimeException e) {</span>
+<span class="nc" id="L178">                        log.warn(&quot;Use default implementation.&quot;);</span>
+<span class="nc" id="L179">                        mappedFile = new MappedFile(req.getFilePath(), req.getFileSize(), messageStore.getTransientStorePool());</span>
+<span class="nc" id="L180">                    }</span>
+                } else {
+<span class="fc" id="L182">                    mappedFile = new MappedFile(req.getFilePath(), req.getFileSize());</span>
+                }
+
+<span class="fc" id="L185">                long eclipseTime = UtilAll.computeEclipseTimeMilliseconds(beginTime);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                if (eclipseTime &gt; 10) {</span>
+<span class="nc" id="L187">                    int queueSize = this.requestQueue.size();</span>
+<span class="nc" id="L188">                    log.warn(&quot;create mappedFile spent time(ms) &quot; + eclipseTime + &quot; queue size &quot; + queueSize</span>
+<span class="nc" id="L189">                        + &quot; &quot; + req.getFilePath() + &quot; &quot; + req.getFileSize());</span>
+                }
+
+                // pre write mappedFile
+<span class="fc" id="L193">                if (mappedFile.getFileSize() &gt;= this.messageStore.getMessageStoreConfig()</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                    .getMapedFileSizeCommitLog()</span>
+                    &amp;&amp;
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">                    this.messageStore.getMessageStoreConfig().isWarmMapedFileEnable()) {</span>
+<span class="nc" id="L197">                    mappedFile.warmMappedFile(this.messageStore.getMessageStoreConfig().getFlushDiskType(),</span>
+<span class="nc" id="L198">                        this.messageStore.getMessageStoreConfig().getFlushLeastPagesWhenWarmMapedFile());</span>
+                }
+
+<span class="fc" id="L201">                req.setMappedFile(mappedFile);</span>
+<span class="fc" id="L202">                this.hasException = false;</span>
+<span class="fc" id="L203">                isSuccess = true;</span>
+            }
+<span class="fc" id="L205">        } catch (InterruptedException e) {</span>
+<span class="fc" id="L206">            log.warn(this.getServiceName() + &quot; interrupted, possibly by shutdown.&quot;);</span>
+<span class="fc" id="L207">            this.hasException = true;</span>
+<span class="fc" id="L208">            return false;</span>
+<span class="nc" id="L209">        } catch (IOException e) {</span>
+<span class="nc" id="L210">            log.warn(this.getServiceName() + &quot; service has exception. &quot;, e);</span>
+<span class="nc" id="L211">            this.hasException = true;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (null != req) {</span>
+<span class="nc" id="L213">                requestQueue.offer(req);</span>
+                try {
+<span class="nc" id="L215">                    Thread.sleep(1);</span>
+<span class="nc" id="L216">                } catch (InterruptedException ignored) {</span>
+<span class="nc" id="L217">                }</span>
+            }
+        } finally {
+<span class="pc bpc" id="L220" title="21 of 24 branches missed.">            if (req != null &amp;&amp; isSuccess)</span>
+<span class="pc" id="L221">                req.getCountDownLatch().countDown();</span>
+        }
+<span class="fc" id="L223">        return true;</span>
+    }
+
+    static class AllocateRequest implements Comparable&lt;AllocateRequest&gt; {
+        // Full file path
+        private String filePath;
+        private int fileSize;
+<span class="fc" id="L230">        private CountDownLatch countDownLatch = new CountDownLatch(1);</span>
+<span class="fc" id="L231">        private volatile MappedFile mappedFile = null;</span>
+
+<span class="fc" id="L233">        public AllocateRequest(String filePath, int fileSize) {</span>
+<span class="fc" id="L234">            this.filePath = filePath;</span>
+<span class="fc" id="L235">            this.fileSize = fileSize;</span>
+<span class="fc" id="L236">        }</span>
+
+        public String getFilePath() {
+<span class="fc" id="L239">            return filePath;</span>
+        }
+
+        public void setFilePath(String filePath) {
+<span class="nc" id="L243">            this.filePath = filePath;</span>
+<span class="nc" id="L244">        }</span>
+
+        public int getFileSize() {
+<span class="fc" id="L247">            return fileSize;</span>
+        }
+
+        public void setFileSize(int fileSize) {
+<span class="nc" id="L251">            this.fileSize = fileSize;</span>
+<span class="nc" id="L252">        }</span>
+
+        public CountDownLatch getCountDownLatch() {
+<span class="fc" id="L255">            return countDownLatch;</span>
+        }
+
+        public void setCountDownLatch(CountDownLatch countDownLatch) {
+<span class="nc" id="L259">            this.countDownLatch = countDownLatch;</span>
+<span class="nc" id="L260">        }</span>
+
+        public MappedFile getMappedFile() {
+<span class="fc" id="L263">            return mappedFile;</span>
+        }
+
+        public void setMappedFile(MappedFile mappedFile) {
+<span class="fc" id="L267">            this.mappedFile = mappedFile;</span>
+<span class="fc" id="L268">        }</span>
+
+        public int compareTo(AllocateRequest other) {
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">            if (this.fileSize &lt; other.fileSize)</span>
+<span class="nc" id="L272">                return 1;</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">            else if (this.fileSize &gt; other.fileSize) {</span>
+<span class="nc" id="L274">                return -1;</span>
+            } else {
+<span class="fc" id="L276">                int mIndex = this.filePath.lastIndexOf(File.separator);</span>
+<span class="fc" id="L277">                long mName = Long.parseLong(this.filePath.substring(mIndex + 1));</span>
+<span class="fc" id="L278">                int oIndex = other.filePath.lastIndexOf(File.separator);</span>
+<span class="fc" id="L279">                long oName = Long.parseLong(other.filePath.substring(oIndex + 1));</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                if (mName &lt; oName) {</span>
+<span class="nc" id="L281">                    return -1;</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">                } else if (mName &gt; oName) {</span>
+<span class="fc" id="L283">                    return 1;</span>
+                } else {
+<span class="nc" id="L285">                    return 0;</span>
+                }
+            }
+            // return this.fileSize &lt; other.fileSize ? 1 : this.fileSize &gt;
+            // other.fileSize ? -1 : 0;
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L294">            final int prime = 31;</span>
+<span class="nc" id="L295">            int result = 1;</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">            result = prime * result + ((filePath == null) ? 0 : filePath.hashCode());</span>
+<span class="nc" id="L297">            result = prime * result + fileSize;</span>
+<span class="nc" id="L298">            return result;</span>
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            if (this == obj)</span>
+<span class="nc" id="L304">                return true;</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">            if (obj == null)</span>
+<span class="nc" id="L306">                return false;</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">            if (getClass() != obj.getClass())</span>
+<span class="nc" id="L308">                return false;</span>
+<span class="nc" id="L309">            AllocateRequest other = (AllocateRequest) obj;</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">            if (filePath == null) {</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                if (other.filePath != null)</span>
+<span class="nc" id="L312">                    return false;</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">            } else if (!filePath.equals(other.filePath))</span>
+<span class="nc" id="L314">                return false;</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            if (fileSize != other.fileSize)</span>
+<span class="nc" id="L316">                return false;</span>
+<span class="nc" id="L317">            return true;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

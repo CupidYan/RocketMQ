@@ -1,0 +1,13 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.routeinfo,BrokerHousekeepingService,8,24,0,0,3,8,2,4,2,4
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.routeinfo,RouteInfoManager,923,786,136,56,230,212,90,27,4,17
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.routeinfo,BrokerLiveInfo,28,42,0,0,12,7,8,2,8,2
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv,NamesrvController.new Runnable() {...},5,6,0,0,2,1,1,1,1,1
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv,NamesrvController,26,146,1,1,6,31,5,9,4,9
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv,NamesrvStartup,271,0,16,0,69,0,13,0,5,0
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv,NamesrvController.new Runnable() {...},5,6,0,0,2,1,1,1,1,1
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv,NamesrvStartup.new Runnable() {...},70,0,2,0,13,0,3,0,2,0
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.processor,DefaultRequestProcessor,560,343,33,12,155,105,39,15,14,9
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.processor,ClusterTestRequestProcessor,36,79,2,2,14,21,2,3,0,3
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.kvconfig,KVConfigManager,178,251,9,11,34,66,8,11,1,8
+rocketmq-namesrv 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.namesrv.kvconfig,KVConfigSerializeWrapper,0,10,0,0,0,4,0,3,0,3

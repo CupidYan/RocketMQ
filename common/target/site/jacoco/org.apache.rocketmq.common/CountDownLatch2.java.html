@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CountDownLatch2.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common</a> &gt; <span class="el_source">CountDownLatch2.java</span></div><h1>CountDownLatch2.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.common;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.AbstractQueuedSynchronizer;
+
+/**
+ * Add reset feature for @see java.util.concurrent.CountDownLatch2
+ */
+public class CountDownLatch2 {
+    private final Sync sync;
+
+    /**
+     * Constructs a {@code CountDownLatch2} initialized with the given count.
+     *
+     * @param count the number of times {@link #countDown} must be invoked before threads can pass through {@link #await}
+     * @throws IllegalArgumentException if {@code count} is negative
+     */
+<span class="nc" id="L35">    public CountDownLatch2(int count) {</span>
+<span class="nc bnc" id="L36" title="All 2 branches missed.">        if (count &lt; 0)</span>
+<span class="nc" id="L37">            throw new IllegalArgumentException(&quot;count &lt; 0&quot;);</span>
+<span class="nc" id="L38">        this.sync = new Sync(count);</span>
+<span class="nc" id="L39">    }</span>
+
+    /**
+     * Causes the current thread to wait until the latch has counted down to
+     * zero, unless the thread is {@linkplain Thread#interrupt interrupted}.
+     *
+     * &lt;p&gt;If the current count is zero then this method returns immediately.
+     *
+     * &lt;p&gt;If the current count is greater than zero then the current
+     * thread becomes disabled for thread scheduling purposes and lies
+     * dormant until one of two things happen:
+     * &lt;ul&gt;
+     * &lt;li&gt;The count reaches zero due to invocations of the
+     * {@link #countDown} method; or
+     * &lt;li&gt;Some other thread {@linkplain Thread#interrupt interrupts}
+     * the current thread.
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If the current thread:
+     * &lt;ul&gt;
+     * &lt;li&gt;has its interrupted status set on entry to this method; or
+     * &lt;li&gt;is {@linkplain Thread#interrupt interrupted} while waiting,
+     * &lt;/ul&gt;
+     * then {@link InterruptedException} is thrown and the current thread's
+     * interrupted status is cleared.
+     *
+     * @throws InterruptedException if the current thread is interrupted while waiting
+     */
+    public void await() throws InterruptedException {
+<span class="nc" id="L68">        sync.acquireSharedInterruptibly(1);</span>
+<span class="nc" id="L69">    }</span>
+
+    /**
+     * Causes the current thread to wait until the latch has counted down to
+     * zero, unless the thread is {@linkplain Thread#interrupt interrupted},
+     * or the specified waiting time elapses.
+     *
+     * &lt;p&gt;If the current count is zero then this method returns immediately
+     * with the value {@code true}.
+     *
+     * &lt;p&gt;If the current count is greater than zero then the current
+     * thread becomes disabled for thread scheduling purposes and lies
+     * dormant until one of three things happen:
+     * &lt;ul&gt;
+     * &lt;li&gt;The count reaches zero due to invocations of the
+     * {@link #countDown} method; or
+     * &lt;li&gt;Some other thread {@linkplain Thread#interrupt interrupts}
+     * the current thread; or
+     * &lt;li&gt;The specified waiting time elapses.
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If the count reaches zero then the method returns with the
+     * value {@code true}.
+     *
+     * &lt;p&gt;If the current thread:
+     * &lt;ul&gt;
+     * &lt;li&gt;has its interrupted status set on entry to this method; or
+     * &lt;li&gt;is {@linkplain Thread#interrupt interrupted} while waiting,
+     * &lt;/ul&gt;
+     * then {@link InterruptedException} is thrown and the current thread's
+     * interrupted status is cleared.
+     *
+     * &lt;p&gt;If the specified waiting time elapses then the value {@code false}
+     * is returned.  If the time is less than or equal to zero, the method
+     * will not wait at all.
+     *
+     * @param timeout the maximum time to wait
+     * @param unit the time unit of the {@code timeout} argument
+     * @return {@code true} if the count reached zero and {@code false} if the waiting time elapsed before the count reached zero
+     * @throws InterruptedException if the current thread is interrupted while waiting
+     */
+    public boolean await(long timeout, TimeUnit unit)
+        throws InterruptedException {
+<span class="nc" id="L112">        return sync.tryAcquireSharedNanos(1, unit.toNanos(timeout));</span>
+    }
+
+    /**
+     * Decrements the count of the latch, releasing all waiting threads if
+     * the count reaches zero.
+     *
+     * &lt;p&gt;If the current count is greater than zero then it is decremented.
+     * If the new count is zero then all waiting threads are re-enabled for
+     * thread scheduling purposes.
+     *
+     * &lt;p&gt;If the current count equals zero then nothing happens.
+     */
+    public void countDown() {
+<span class="nc" id="L126">        sync.releaseShared(1);</span>
+<span class="nc" id="L127">    }</span>
+
+    /**
+     * Returns the current count.
+     *
+     * &lt;p&gt;This method is typically used for debugging and testing purposes.
+     *
+     * @return the current count
+     */
+    public long getCount() {
+<span class="nc" id="L137">        return sync.getCount();</span>
+    }
+
+    public void reset() {
+<span class="nc" id="L141">        sync.reset();</span>
+<span class="nc" id="L142">    }</span>
+
+    /**
+     * Returns a string identifying this latch, as well as its state.
+     * The state, in brackets, includes the String {@code &quot;Count =&quot;}
+     * followed by the current count.
+     *
+     * @return a string identifying this latch, as well as its state
+     */
+    public String toString() {
+<span class="nc" id="L152">        return super.toString() + &quot;[Count = &quot; + sync.getCount() + &quot;]&quot;;</span>
+    }
+
+    /**
+     * Synchronization control For CountDownLatch2.
+     * Uses AQS state to represent count.
+     */
+    private static final class Sync extends AbstractQueuedSynchronizer {
+        private static final long serialVersionUID = 4982264981922014374L;
+
+        private final int startCount;
+
+<span class="nc" id="L164">        Sync(int count) {</span>
+<span class="nc" id="L165">            this.startCount = count;</span>
+<span class="nc" id="L166">            setState(count);</span>
+<span class="nc" id="L167">        }</span>
+
+        int getCount() {
+<span class="nc" id="L170">            return getState();</span>
+        }
+
+        protected int tryAcquireShared(int acquires) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            return (getState() == 0) ? 1 : -1;</span>
+        }
+
+        protected boolean tryReleaseShared(int releases) {
+            // Decrement count; signal when transition to zero
+            for (;;) {
+<span class="nc" id="L180">                int c = getState();</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                if (c == 0)</span>
+<span class="nc" id="L182">                    return false;</span>
+<span class="nc" id="L183">                int nextc = c - 1;</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">                if (compareAndSetState(c, nextc))</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                    return nextc == 0;</span>
+<span class="nc" id="L186">            }</span>
+        }
+
+        protected void reset() {
+<span class="nc" id="L190">            setState(startCount);</span>
+<span class="nc" id="L191">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

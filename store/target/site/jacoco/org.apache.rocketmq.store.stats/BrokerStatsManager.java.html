@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BrokerStatsManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store.stats</a> &gt; <span class="el_source">BrokerStatsManager.java</span></div><h1>BrokerStatsManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store.stats;
+
+import java.util.HashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.stats.MomentStatsItemSet;
+import org.apache.rocketmq.common.stats.StatsItem;
+import org.apache.rocketmq.common.stats.StatsItemSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class BrokerStatsManager {
+
+    public static final String TOPIC_PUT_NUMS = &quot;TOPIC_PUT_NUMS&quot;;
+    public static final String TOPIC_PUT_SIZE = &quot;TOPIC_PUT_SIZE&quot;;
+    public static final String GROUP_GET_NUMS = &quot;GROUP_GET_NUMS&quot;;
+    public static final String GROUP_GET_SIZE = &quot;GROUP_GET_SIZE&quot;;
+    public static final String SNDBCK_PUT_NUMS = &quot;SNDBCK_PUT_NUMS&quot;;
+    public static final String BROKER_PUT_NUMS = &quot;BROKER_PUT_NUMS&quot;;
+    public static final String BROKER_GET_NUMS = &quot;BROKER_GET_NUMS&quot;;
+    public static final String GROUP_GET_FROM_DISK_NUMS = &quot;GROUP_GET_FROM_DISK_NUMS&quot;;
+    public static final String GROUP_GET_FROM_DISK_SIZE = &quot;GROUP_GET_FROM_DISK_SIZE&quot;;
+    public static final String BROKER_GET_FROM_DISK_NUMS = &quot;BROKER_GET_FROM_DISK_NUMS&quot;;
+    public static final String BROKER_GET_FROM_DISK_SIZE = &quot;BROKER_GET_FROM_DISK_SIZE&quot;;
+    // For commercial
+    public static final String COMMERCIAL_SEND_TIMES = &quot;COMMERCIAL_SEND_TIMES&quot;;
+    public static final String COMMERCIAL_SNDBCK_TIMES = &quot;COMMERCIAL_SNDBCK_TIMES&quot;;
+    public static final String COMMERCIAL_RCV_TIMES = &quot;COMMERCIAL_RCV_TIMES&quot;;
+    public static final String COMMERCIAL_RCV_EPOLLS = &quot;COMMERCIAL_RCV_EPOLLS&quot;;
+    public static final String COMMERCIAL_SEND_SIZE = &quot;COMMERCIAL_SEND_SIZE&quot;;
+    public static final String COMMERCIAL_RCV_SIZE = &quot;COMMERCIAL_RCV_SIZE&quot;;
+    public static final String COMMERCIAL_PERM_FAILURES = &quot;COMMERCIAL_PERM_FAILURES&quot;;
+    public static final String COMMERCIAL_OWNER = &quot;Owner&quot;;
+    // Message Size limit for one api-calling count.
+    public static final double SIZE_PER_COUNT = 64 * 1024;
+
+    public static final String GROUP_GET_FALL_SIZE = &quot;GROUP_GET_FALL_SIZE&quot;;
+    public static final String GROUP_GET_FALL_TIME = &quot;GROUP_GET_FALL_TIME&quot;;
+    // Pull Message Latency
+    public static final String GROUP_GET_LATENCY = &quot;GROUP_GET_LATENCY&quot;;
+
+    /**
+     * read disk follow stats
+     */
+<span class="nc" id="L63">    private static final Logger log = LoggerFactory.getLogger(LoggerName.ROCKETMQ_STATS_LOGGER_NAME);</span>
+<span class="nc" id="L64">    private static final Logger COMMERCIAL_LOG = LoggerFactory.getLogger(LoggerName.COMMERCIAL_LOGGER_NAME);</span>
+<span class="nc" id="L65">    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(</span>
+        &quot;BrokerStatsThread&quot;));
+<span class="nc" id="L67">    private final ScheduledExecutorService commercialExecutor = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(</span>
+        &quot;CommercialStatsThread&quot;));
+<span class="nc" id="L69">    private final HashMap&lt;String, StatsItemSet&gt; statsTable = new HashMap&lt;String, StatsItemSet&gt;();</span>
+    private final String clusterName;
+<span class="nc" id="L71">    private final MomentStatsItemSet momentStatsItemSetFallSize = new MomentStatsItemSet(GROUP_GET_FALL_SIZE, scheduledExecutorService, log);</span>
+<span class="nc" id="L72">    private final MomentStatsItemSet momentStatsItemSetFallTime = new MomentStatsItemSet(GROUP_GET_FALL_TIME, scheduledExecutorService, log);</span>
+
+<span class="nc" id="L74">    public BrokerStatsManager(String clusterName) {</span>
+<span class="nc" id="L75">        this.clusterName = clusterName;</span>
+
+<span class="nc" id="L77">        this.statsTable.put(TOPIC_PUT_NUMS, new StatsItemSet(TOPIC_PUT_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L78">        this.statsTable.put(TOPIC_PUT_SIZE, new StatsItemSet(TOPIC_PUT_SIZE, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L79">        this.statsTable.put(GROUP_GET_NUMS, new StatsItemSet(GROUP_GET_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L80">        this.statsTable.put(GROUP_GET_SIZE, new StatsItemSet(GROUP_GET_SIZE, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L81">        this.statsTable.put(GROUP_GET_LATENCY, new StatsItemSet(GROUP_GET_LATENCY, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L82">        this.statsTable.put(SNDBCK_PUT_NUMS, new StatsItemSet(SNDBCK_PUT_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L83">        this.statsTable.put(BROKER_PUT_NUMS, new StatsItemSet(BROKER_PUT_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L84">        this.statsTable.put(BROKER_GET_NUMS, new StatsItemSet(BROKER_GET_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L85">        this.statsTable.put(GROUP_GET_FROM_DISK_NUMS, new StatsItemSet(GROUP_GET_FROM_DISK_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L86">        this.statsTable.put(GROUP_GET_FROM_DISK_SIZE, new StatsItemSet(GROUP_GET_FROM_DISK_SIZE, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L87">        this.statsTable.put(BROKER_GET_FROM_DISK_NUMS, new StatsItemSet(BROKER_GET_FROM_DISK_NUMS, this.scheduledExecutorService, log));</span>
+<span class="nc" id="L88">        this.statsTable.put(BROKER_GET_FROM_DISK_SIZE, new StatsItemSet(BROKER_GET_FROM_DISK_SIZE, this.scheduledExecutorService, log));</span>
+
+<span class="nc" id="L90">        this.statsTable.put(COMMERCIAL_SEND_TIMES, new StatsItemSet(COMMERCIAL_SEND_TIMES, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L91">        this.statsTable.put(COMMERCIAL_RCV_TIMES, new StatsItemSet(COMMERCIAL_RCV_TIMES, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L92">        this.statsTable.put(COMMERCIAL_SEND_SIZE, new StatsItemSet(COMMERCIAL_SEND_SIZE, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L93">        this.statsTable.put(COMMERCIAL_RCV_SIZE, new StatsItemSet(COMMERCIAL_RCV_SIZE, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L94">        this.statsTable.put(COMMERCIAL_RCV_EPOLLS, new StatsItemSet(COMMERCIAL_RCV_EPOLLS, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L95">        this.statsTable.put(COMMERCIAL_SNDBCK_TIMES, new StatsItemSet(COMMERCIAL_SNDBCK_TIMES, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L96">        this.statsTable.put(COMMERCIAL_PERM_FAILURES, new StatsItemSet(COMMERCIAL_PERM_FAILURES, this.commercialExecutor, COMMERCIAL_LOG));</span>
+<span class="nc" id="L97">    }</span>
+
+    public MomentStatsItemSet getMomentStatsItemSetFallSize() {
+<span class="nc" id="L100">        return momentStatsItemSetFallSize;</span>
+    }
+
+    public MomentStatsItemSet getMomentStatsItemSetFallTime() {
+<span class="nc" id="L104">        return momentStatsItemSetFallTime;</span>
+    }
+
+    public void start() {
+<span class="nc" id="L108">    }</span>
+
+    public void shutdown() {
+<span class="nc" id="L111">        this.scheduledExecutorService.shutdown();</span>
+<span class="nc" id="L112">    }</span>
+
+    public StatsItem getStatsItem(final String statsName, final String statsKey) {
+        try {
+<span class="nc" id="L116">            return this.statsTable.get(statsName).getStatsItem(statsKey);</span>
+<span class="nc" id="L117">        } catch (Exception e) {</span>
+        }
+
+<span class="nc" id="L120">        return null;</span>
+    }
+
+    public void incTopicPutNums(final String topic) {
+<span class="nc" id="L124">        this.statsTable.get(TOPIC_PUT_NUMS).addValue(topic, 1, 1);</span>
+<span class="nc" id="L125">    }</span>
+
+    public void incTopicPutSize(final String topic, final int size) {
+<span class="nc" id="L128">        this.statsTable.get(TOPIC_PUT_SIZE).addValue(topic, size, 1);</span>
+<span class="nc" id="L129">    }</span>
+
+    public void incGroupGetNums(final String group, final String topic, final int incValue) {
+<span class="nc" id="L132">        final String statsKey = buildStatsKey(topic, group);</span>
+<span class="nc" id="L133">        this.statsTable.get(GROUP_GET_NUMS).addValue(statsKey, incValue, 1);</span>
+<span class="nc" id="L134">    }</span>
+
+    public String buildStatsKey(String topic, String group) {
+<span class="nc" id="L137">        StringBuffer strBuilder = new StringBuffer();</span>
+<span class="nc" id="L138">        strBuilder.append(topic);</span>
+<span class="nc" id="L139">        strBuilder.append(&quot;@&quot;);</span>
+<span class="nc" id="L140">        strBuilder.append(group);</span>
+<span class="nc" id="L141">        return strBuilder.toString();</span>
+    }
+
+    public void incGroupGetSize(final String group, final String topic, final int incValue) {
+<span class="nc" id="L145">        final String statsKey = buildStatsKey(topic, group);</span>
+<span class="nc" id="L146">        this.statsTable.get(GROUP_GET_SIZE).addValue(statsKey, incValue, 1);</span>
+<span class="nc" id="L147">    }</span>
+
+    public void incGroupGetLatency(final String group, final String topic, final int queueId, final int incValue) {
+<span class="nc" id="L150">        final String statsKey = String.format(&quot;%d@%s@%s&quot;, queueId, topic, group);</span>
+<span class="nc" id="L151">        this.statsTable.get(GROUP_GET_LATENCY).addValue(statsKey, incValue, 1);</span>
+<span class="nc" id="L152">    }</span>
+
+    public void incBrokerPutNums() {
+<span class="nc" id="L155">        this.statsTable.get(BROKER_PUT_NUMS).getAndCreateStatsItem(this.clusterName).getValue().incrementAndGet();</span>
+<span class="nc" id="L156">    }</span>
+
+    public void incBrokerGetNums(final int incValue) {
+<span class="nc" id="L159">        this.statsTable.get(BROKER_GET_NUMS).getAndCreateStatsItem(this.clusterName).getValue().addAndGet(incValue);</span>
+<span class="nc" id="L160">    }</span>
+
+    public void incSendBackNums(final String group, final String topic) {
+<span class="nc" id="L163">        final String statsKey = buildStatsKey(topic, group);</span>
+<span class="nc" id="L164">        this.statsTable.get(SNDBCK_PUT_NUMS).addValue(statsKey, 1, 1);</span>
+<span class="nc" id="L165">    }</span>
+
+    public double tpsGroupGetNums(final String group, final String topic) {
+<span class="nc" id="L168">        final String statsKey = buildStatsKey(topic, group);</span>
+<span class="nc" id="L169">        return this.statsTable.get(GROUP_GET_NUMS).getStatsDataInMinute(statsKey).getTps();</span>
+    }
+
+    public void recordDiskFallBehindTime(final String group, final String topic, final int queueId, final long fallBehind) {
+<span class="nc" id="L173">        final String statsKey = String.format(&quot;%d@%s@%s&quot;, queueId, topic, group);</span>
+<span class="nc" id="L174">        this.momentStatsItemSetFallTime.getAndCreateStatsItem(statsKey).getValue().set(fallBehind);</span>
+<span class="nc" id="L175">    }</span>
+
+    public void recordDiskFallBehindSize(final String group, final String topic, final int queueId, final long fallBehind) {
+<span class="nc" id="L178">        final String statsKey = String.format(&quot;%d@%s@%s&quot;, queueId, topic, group);</span>
+<span class="nc" id="L179">        this.momentStatsItemSetFallSize.getAndCreateStatsItem(statsKey).getValue().set(fallBehind);</span>
+<span class="nc" id="L180">    }</span>
+
+    public void incCommercialValue(final String key, final String owner, final String group,
+        final String topic, final String type, final int incValue) {
+<span class="nc" id="L184">        final String statsKey = buildCommercialStatsKey(owner, topic, group, type);</span>
+<span class="nc" id="L185">        this.statsTable.get(key).addValue(statsKey, incValue, 1);</span>
+<span class="nc" id="L186">    }</span>
+
+    public String buildCommercialStatsKey(String owner, String topic, String group, String type) {
+<span class="nc" id="L189">        StringBuffer strBuilder = new StringBuffer();</span>
+<span class="nc" id="L190">        strBuilder.append(owner);</span>
+<span class="nc" id="L191">        strBuilder.append(&quot;@&quot;);</span>
+<span class="nc" id="L192">        strBuilder.append(topic);</span>
+<span class="nc" id="L193">        strBuilder.append(&quot;@&quot;);</span>
+<span class="nc" id="L194">        strBuilder.append(group);</span>
+<span class="nc" id="L195">        strBuilder.append(&quot;@&quot;);</span>
+<span class="nc" id="L196">        strBuilder.append(type);</span>
+<span class="nc" id="L197">        return strBuilder.toString();</span>
+    }
+
+<span class="nc" id="L200">    public enum StatsType {</span>
+<span class="nc" id="L201">        SEND_SUCCESS,</span>
+<span class="nc" id="L202">        SEND_FAILURE,</span>
+<span class="nc" id="L203">        SEND_BACK,</span>
+<span class="nc" id="L204">        SEND_TIMER,</span>
+<span class="nc" id="L205">        SEND_TRANSACTION,</span>
+<span class="nc" id="L206">        RCV_SUCCESS,</span>
+<span class="nc" id="L207">        RCV_EPOLLS,</span>
+<span class="nc" id="L208">        PERM_FAILURE</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Message.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.message</a> &gt; <span class="el_source">Message.java</span></div><h1>Message.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.common.message;
+
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+public class Message implements Serializable {
+    private static final long serialVersionUID = 8445773977080406428L;
+
+    private String topic;
+    private int flag;
+    private Map&lt;String, String&gt; properties;
+    private byte[] body;
+
+<span class="nc" id="L32">    public Message() {</span>
+<span class="nc" id="L33">    }</span>
+
+    public Message(String topic, byte[] body) {
+<span class="nc" id="L36">        this(topic, &quot;&quot;, &quot;&quot;, 0, body, true);</span>
+<span class="nc" id="L37">    }</span>
+
+<span class="nc" id="L39">    public Message(String topic, String tags, String keys, int flag, byte[] body, boolean waitStoreMsgOK) {</span>
+<span class="nc" id="L40">        this.topic = topic;</span>
+<span class="nc" id="L41">        this.flag = flag;</span>
+<span class="nc" id="L42">        this.body = body;</span>
+
+<span class="nc bnc" id="L44" title="All 4 branches missed.">        if (tags != null &amp;&amp; tags.length() &gt; 0)</span>
+<span class="nc" id="L45">            this.setTags(tags);</span>
+
+<span class="nc bnc" id="L47" title="All 4 branches missed.">        if (keys != null &amp;&amp; keys.length() &gt; 0)</span>
+<span class="nc" id="L48">            this.setKeys(keys);</span>
+
+<span class="nc" id="L50">        this.setWaitStoreMsgOK(waitStoreMsgOK);</span>
+<span class="nc" id="L51">    }</span>
+
+    public Message(String topic, String tags, byte[] body) {
+<span class="nc" id="L54">        this(topic, tags, &quot;&quot;, 0, body, true);</span>
+<span class="nc" id="L55">    }</span>
+
+    public Message(String topic, String tags, String keys, byte[] body) {
+<span class="nc" id="L58">        this(topic, tags, keys, 0, body, true);</span>
+<span class="nc" id="L59">    }</span>
+
+    public void setKeys(String keys) {
+<span class="nc" id="L62">        this.putProperty(MessageConst.PROPERTY_KEYS, keys);</span>
+<span class="nc" id="L63">    }</span>
+
+    void putProperty(final String name, final String value) {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (null == this.properties) {</span>
+<span class="nc" id="L67">            this.properties = new HashMap&lt;String, String&gt;();</span>
+        }
+
+<span class="nc" id="L70">        this.properties.put(name, value);</span>
+<span class="nc" id="L71">    }</span>
+
+    void clearProperty(final String name) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (null != this.properties) {</span>
+<span class="nc" id="L75">            this.properties.remove(name);</span>
+        }
+<span class="nc" id="L77">    }</span>
+
+    public void putUserProperty(final String name, final String value) {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if (MessageConst.STRING_HASH_SET.contains(name)) {</span>
+<span class="nc" id="L81">            throw new RuntimeException(String.format(</span>
+                &quot;The Property&lt;%s&gt; is used by system, input another please&quot;, name));
+        }
+<span class="nc" id="L84">        this.putProperty(name, value);</span>
+<span class="nc" id="L85">    }</span>
+
+    public String getUserProperty(final String name) {
+<span class="nc" id="L88">        return this.getProperty(name);</span>
+    }
+
+    public String getProperty(final String name) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (null == this.properties) {</span>
+<span class="nc" id="L93">            this.properties = new HashMap&lt;String, String&gt;();</span>
+        }
+
+<span class="nc" id="L96">        return this.properties.get(name);</span>
+    }
+
+    public String getTopic() {
+<span class="nc" id="L100">        return topic;</span>
+    }
+
+    public void setTopic(String topic) {
+<span class="nc" id="L104">        this.topic = topic;</span>
+<span class="nc" id="L105">    }</span>
+
+    public String getTags() {
+<span class="nc" id="L108">        return this.getProperty(MessageConst.PROPERTY_TAGS);</span>
+    }
+
+    public void setTags(String tags) {
+<span class="nc" id="L112">        this.putProperty(MessageConst.PROPERTY_TAGS, tags);</span>
+<span class="nc" id="L113">    }</span>
+
+    public String getKeys() {
+<span class="nc" id="L116">        return this.getProperty(MessageConst.PROPERTY_KEYS);</span>
+    }
+
+    public void setKeys(Collection&lt;String&gt; keys) {
+<span class="nc" id="L120">        StringBuffer sb = new StringBuffer();</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        for (String k : keys) {</span>
+<span class="nc" id="L122">            sb.append(k);</span>
+<span class="nc" id="L123">            sb.append(MessageConst.KEY_SEPARATOR);</span>
+<span class="nc" id="L124">        }</span>
+
+<span class="nc" id="L126">        this.setKeys(sb.toString().trim());</span>
+<span class="nc" id="L127">    }</span>
+
+    public int getDelayTimeLevel() {
+<span class="nc" id="L130">        String t = this.getProperty(MessageConst.PROPERTY_DELAY_TIME_LEVEL);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (t != null) {</span>
+<span class="nc" id="L132">            return Integer.parseInt(t);</span>
+        }
+
+<span class="nc" id="L135">        return 0;</span>
+    }
+
+    public void setDelayTimeLevel(int level) {
+<span class="nc" id="L139">        this.putProperty(MessageConst.PROPERTY_DELAY_TIME_LEVEL, String.valueOf(level));</span>
+<span class="nc" id="L140">    }</span>
+
+    public boolean isWaitStoreMsgOK() {
+<span class="nc" id="L143">        String result = this.getProperty(MessageConst.PROPERTY_WAIT_STORE_MSG_OK);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (null == result)</span>
+<span class="nc" id="L145">            return true;</span>
+
+<span class="nc" id="L147">        return Boolean.parseBoolean(result);</span>
+    }
+
+    public void setWaitStoreMsgOK(boolean waitStoreMsgOK) {
+<span class="nc" id="L151">        this.putProperty(MessageConst.PROPERTY_WAIT_STORE_MSG_OK, Boolean.toString(waitStoreMsgOK));</span>
+<span class="nc" id="L152">    }</span>
+
+    public int getFlag() {
+<span class="nc" id="L155">        return flag;</span>
+    }
+
+    public void setFlag(int flag) {
+<span class="nc" id="L159">        this.flag = flag;</span>
+<span class="nc" id="L160">    }</span>
+
+    public byte[] getBody() {
+<span class="nc" id="L163">        return body;</span>
+    }
+
+    public void setBody(byte[] body) {
+<span class="nc" id="L167">        this.body = body;</span>
+<span class="nc" id="L168">    }</span>
+
+    public Map&lt;String, String&gt; getProperties() {
+<span class="nc" id="L171">        return properties;</span>
+    }
+
+    void setProperties(Map&lt;String, String&gt; properties) {
+<span class="nc" id="L175">        this.properties = properties;</span>
+<span class="nc" id="L176">    }</span>
+
+    public String getBuyerId() {
+<span class="nc" id="L179">        return getProperty(MessageConst.PROPERTY_BUYER_ID);</span>
+    }
+
+    public void setBuyerId(String buyerId) {
+<span class="nc" id="L183">        putProperty(MessageConst.PROPERTY_BUYER_ID, buyerId);</span>
+<span class="nc" id="L184">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        return &quot;Message [topic=&quot; + topic + &quot;, flag=&quot; + flag + &quot;, properties=&quot; + properties + &quot;, body=&quot;</span>
+            + (body != null ? body.length : 0) + &quot;]&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

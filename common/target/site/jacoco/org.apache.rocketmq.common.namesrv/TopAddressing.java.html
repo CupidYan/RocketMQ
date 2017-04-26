@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TopAddressing.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.namesrv</a> &gt; <span class="el_source">TopAddressing.java</span></div><h1>TopAddressing.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * $Id: TopAddressing.java 1831 2013-05-16 01:39:51Z vintagewang@apache.org $
+ */
+package org.apache.rocketmq.common.namesrv;
+
+import java.io.IOException;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.utils.HttpTinyClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class TopAddressing {
+<span class="nc" id="L33">    private static final Logger log = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);</span>
+    private String nsAddr;
+    private String wsAddr;
+    private String unitName;
+
+    public TopAddressing(final String wsAddr) {
+<span class="nc" id="L39">        this(wsAddr, null);</span>
+<span class="nc" id="L40">    }</span>
+
+<span class="nc" id="L42">    public TopAddressing(final String wsAddr, final String unitName) {</span>
+<span class="nc" id="L43">        this.wsAddr = wsAddr;</span>
+<span class="nc" id="L44">        this.unitName = unitName;</span>
+<span class="nc" id="L45">    }</span>
+
+    private static String clearNewLine(final String str) {
+<span class="nc" id="L48">        String newString = str.trim();</span>
+<span class="nc" id="L49">        int index = newString.indexOf(&quot;\r&quot;);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        if (index != -1) {</span>
+<span class="nc" id="L51">            return newString.substring(0, index);</span>
+        }
+
+<span class="nc" id="L54">        index = newString.indexOf(&quot;\n&quot;);</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (index != -1) {</span>
+<span class="nc" id="L56">            return newString.substring(0, index);</span>
+        }
+
+<span class="nc" id="L59">        return newString;</span>
+    }
+
+    public final String fetchNSAddr() {
+<span class="nc" id="L63">        return fetchNSAddr(true, 3000);</span>
+    }
+
+    public final String fetchNSAddr(boolean verbose, long timeoutMills) {
+<span class="nc" id="L67">        String url = this.wsAddr;</span>
+        try {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if (!UtilAll.isBlank(this.unitName)) {</span>
+<span class="nc" id="L70">                url = url + &quot;-&quot; + this.unitName + &quot;?nofix=1&quot;;</span>
+            }
+<span class="nc" id="L72">            HttpTinyClient.HttpResult result = HttpTinyClient.httpGet(url, null, null, &quot;UTF-8&quot;, timeoutMills);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (200 == result.code) {</span>
+<span class="nc" id="L74">                String responseStr = result.content;</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                if (responseStr != null) {</span>
+<span class="nc" id="L76">                    return clearNewLine(responseStr);</span>
+                } else {
+<span class="nc" id="L78">                    log.error(&quot;fetch nameserver address is null&quot;);</span>
+                }
+<span class="nc" id="L80">            } else {</span>
+<span class="nc" id="L81">                log.error(&quot;fetch nameserver address failed. statusCode={}&quot;, result.code);</span>
+            }
+<span class="nc" id="L83">        } catch (IOException e) {</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            if (verbose) {</span>
+<span class="nc" id="L85">                log.error(&quot;fetch name server address exception&quot;, e);</span>
+            }
+<span class="nc" id="L87">        }</span>
+
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (verbose) {</span>
+<span class="nc" id="L90">            String errorMsg =</span>
+                &quot;connect to &quot; + url + &quot; failed, maybe the domain name &quot; + MixAll.WS_DOMAIN_NAME + &quot; not bind in /etc/hosts&quot;;
+<span class="nc" id="L92">            errorMsg += FAQUrl.suggestTodo(FAQUrl.NAME_SERVER_ADDR_NOT_EXIST_URL);</span>
+
+<span class="nc" id="L94">            log.warn(errorMsg);</span>
+        }
+<span class="nc" id="L96">        return null;</span>
+    }
+
+    public String getNsAddr() {
+<span class="nc" id="L100">        return nsAddr;</span>
+    }
+
+    public void setNsAddr(String nsAddr) {
+<span class="nc" id="L104">        this.nsAddr = nsAddr;</span>
+<span class="nc" id="L105">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

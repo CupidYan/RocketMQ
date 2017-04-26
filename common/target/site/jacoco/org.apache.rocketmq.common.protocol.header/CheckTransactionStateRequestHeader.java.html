@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CheckTransactionStateRequestHeader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.protocol.header</a> &gt; <span class="el_source">CheckTransactionStateRequestHeader.java</span></div><h1>CheckTransactionStateRequestHeader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * $Id: EndTransactionRequestHeader.java 1835 2013-05-16 02:00:50Z vintagewang@apache.org $
+ */
+package org.apache.rocketmq.common.protocol.header;
+
+import org.apache.rocketmq.remoting.CommandCustomHeader;
+import org.apache.rocketmq.remoting.annotation.CFNotNull;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+
+<span class="nc" id="L27">public class CheckTransactionStateRequestHeader implements CommandCustomHeader {</span>
+    @CFNotNull
+    private Long tranStateTableOffset;
+    @CFNotNull
+    private Long commitLogOffset;
+    private String msgId;
+    private String transactionId;
+
+    @Override
+    public void checkFields() throws RemotingCommandException {
+<span class="nc" id="L37">    }</span>
+
+    public Long getTranStateTableOffset() {
+<span class="nc" id="L40">        return tranStateTableOffset;</span>
+    }
+
+    public void setTranStateTableOffset(Long tranStateTableOffset) {
+<span class="nc" id="L44">        this.tranStateTableOffset = tranStateTableOffset;</span>
+<span class="nc" id="L45">    }</span>
+
+    public Long getCommitLogOffset() {
+<span class="nc" id="L48">        return commitLogOffset;</span>
+    }
+
+    public void setCommitLogOffset(Long commitLogOffset) {
+<span class="nc" id="L52">        this.commitLogOffset = commitLogOffset;</span>
+<span class="nc" id="L53">    }</span>
+
+    public String getMsgId() {
+<span class="nc" id="L56">        return msgId;</span>
+    }
+
+    public void setMsgId(String msgId) {
+<span class="nc" id="L60">        this.msgId = msgId;</span>
+<span class="nc" id="L61">    }</span>
+
+    public String getTransactionId() {
+<span class="nc" id="L64">        return transactionId;</span>
+    }
+
+    public void setTransactionId(String transactionId) {
+<span class="nc" id="L68">        this.transactionId = transactionId;</span>
+<span class="nc" id="L69">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

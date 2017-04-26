@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultMQPullConsumer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client.consumer</a> &gt; <span class="el_source">DefaultMQPullConsumer.java</span></div><h1>DefaultMQPullConsumer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.client.consumer;
+
+import java.util.HashSet;
+import java.util.Set;
+import org.apache.rocketmq.client.ClientConfig;
+import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.consumer.rebalance.AllocateMessageQueueAveragely;
+import org.apache.rocketmq.client.consumer.store.OffsetStore;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.impl.consumer.DefaultMQPullConsumerImpl;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+
+/**
+ * Default pulling consumer
+ */
+public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsumer {
+    protected final transient DefaultMQPullConsumerImpl defaultMQPullConsumerImpl;
+
+    /**
+     * Do the same thing for the same Group, the application must be set,and
+     * guarantee Globally unique
+     */
+    private String consumerGroup;
+    /**
+     * Long polling mode, the Consumer connection max suspend time, it is not
+     * recommended to modify
+     */
+<span class="fc" id="L51">    private long brokerSuspendMaxTimeMillis = 1000 * 20;</span>
+    /**
+     * Long polling mode, the Consumer connection timeout(must greater than
+     * brokerSuspendMaxTimeMillis), it is not recommended to modify
+     */
+<span class="fc" id="L56">    private long consumerTimeoutMillisWhenSuspend = 1000 * 30;</span>
+    /**
+     * The socket timeout in milliseconds
+     */
+<span class="fc" id="L60">    private long consumerPullTimeoutMillis = 1000 * 10;</span>
+    /**
+     * Consumption pattern,default is clustering
+     */
+<span class="fc" id="L64">    private MessageModel messageModel = MessageModel.CLUSTERING;</span>
+    /**
+     * Message queue listener
+     */
+    private MessageQueueListener messageQueueListener;
+    /**
+     * Offset Storage
+     */
+    private OffsetStore offsetStore;
+    /**
+     * Topic set you want to register
+     */
+<span class="fc" id="L76">    private Set&lt;String&gt; registerTopics = new HashSet&lt;String&gt;();</span>
+    /**
+     * Queue allocation algorithm
+     */
+<span class="fc" id="L80">    private AllocateMessageQueueStrategy allocateMessageQueueStrategy = new AllocateMessageQueueAveragely();</span>
+    /**
+     * Whether the unit of subscription group
+     */
+<span class="fc" id="L84">    private boolean unitMode = false;</span>
+
+<span class="fc" id="L86">    private int maxReconsumeTimes = 16;</span>
+
+    public DefaultMQPullConsumer() {
+<span class="nc" id="L89">        this(MixAll.DEFAULT_CONSUMER_GROUP, null);</span>
+<span class="nc" id="L90">    }</span>
+
+<span class="fc" id="L92">    public DefaultMQPullConsumer(final String consumerGroup, RPCHook rpcHook) {</span>
+<span class="fc" id="L93">        this.consumerGroup = consumerGroup;</span>
+<span class="fc" id="L94">        defaultMQPullConsumerImpl = new DefaultMQPullConsumerImpl(this, rpcHook);</span>
+<span class="fc" id="L95">    }</span>
+
+    public DefaultMQPullConsumer(final String consumerGroup) {
+<span class="fc" id="L98">        this(consumerGroup, null);</span>
+<span class="fc" id="L99">    }</span>
+
+    public DefaultMQPullConsumer(RPCHook rpcHook) {
+<span class="nc" id="L102">        this(MixAll.DEFAULT_CONSUMER_GROUP, rpcHook);</span>
+<span class="nc" id="L103">    }</span>
+
+    @Override
+    public void createTopic(String key, String newTopic, int queueNum) throws MQClientException {
+<span class="nc" id="L107">        createTopic(key, newTopic, queueNum, 0);</span>
+<span class="nc" id="L108">    }</span>
+
+    @Override
+    public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag) throws MQClientException {
+<span class="nc" id="L112">        this.defaultMQPullConsumerImpl.createTopic(key, newTopic, queueNum, topicSysFlag);</span>
+<span class="nc" id="L113">    }</span>
+
+    @Override
+    public long searchOffset(MessageQueue mq, long timestamp) throws MQClientException {
+<span class="nc" id="L117">        return this.defaultMQPullConsumerImpl.searchOffset(mq, timestamp);</span>
+    }
+
+    @Override
+    public long maxOffset(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L122">        return this.defaultMQPullConsumerImpl.maxOffset(mq);</span>
+    }
+
+    @Override
+    public long minOffset(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L127">        return this.defaultMQPullConsumerImpl.minOffset(mq);</span>
+    }
+
+    @Override
+    public long earliestMsgStoreTime(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L132">        return this.defaultMQPullConsumerImpl.earliestMsgStoreTime(mq);</span>
+    }
+
+    @Override
+    public MessageExt viewMessage(String offsetMsgId) throws RemotingException, MQBrokerException,
+        InterruptedException, MQClientException {
+<span class="nc" id="L138">        return this.defaultMQPullConsumerImpl.viewMessage(offsetMsgId);</span>
+    }
+
+    @Override
+    public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end)
+        throws MQClientException, InterruptedException {
+<span class="nc" id="L144">        return this.defaultMQPullConsumerImpl.queryMessage(topic, key, maxNum, begin, end);</span>
+    }
+
+    public AllocateMessageQueueStrategy getAllocateMessageQueueStrategy() {
+<span class="fc" id="L148">        return allocateMessageQueueStrategy;</span>
+    }
+
+    public void setAllocateMessageQueueStrategy(AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
+<span class="nc" id="L152">        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;</span>
+<span class="nc" id="L153">    }</span>
+
+    public long getBrokerSuspendMaxTimeMillis() {
+<span class="fc" id="L156">        return brokerSuspendMaxTimeMillis;</span>
+    }
+
+    public void setBrokerSuspendMaxTimeMillis(long brokerSuspendMaxTimeMillis) {
+<span class="nc" id="L160">        this.brokerSuspendMaxTimeMillis = brokerSuspendMaxTimeMillis;</span>
+<span class="nc" id="L161">    }</span>
+
+    public String getConsumerGroup() {
+<span class="fc" id="L164">        return consumerGroup;</span>
+    }
+
+    public void setConsumerGroup(String consumerGroup) {
+<span class="nc" id="L168">        this.consumerGroup = consumerGroup;</span>
+<span class="nc" id="L169">    }</span>
+
+    public long getConsumerPullTimeoutMillis() {
+<span class="fc" id="L172">        return consumerPullTimeoutMillis;</span>
+    }
+
+    public void setConsumerPullTimeoutMillis(long consumerPullTimeoutMillis) {
+<span class="nc" id="L176">        this.consumerPullTimeoutMillis = consumerPullTimeoutMillis;</span>
+<span class="nc" id="L177">    }</span>
+
+    public long getConsumerTimeoutMillisWhenSuspend() {
+<span class="fc" id="L180">        return consumerTimeoutMillisWhenSuspend;</span>
+    }
+
+    public void setConsumerTimeoutMillisWhenSuspend(long consumerTimeoutMillisWhenSuspend) {
+<span class="nc" id="L184">        this.consumerTimeoutMillisWhenSuspend = consumerTimeoutMillisWhenSuspend;</span>
+<span class="nc" id="L185">    }</span>
+
+    public MessageModel getMessageModel() {
+<span class="fc" id="L188">        return messageModel;</span>
+    }
+
+    public void setMessageModel(MessageModel messageModel) {
+<span class="nc" id="L192">        this.messageModel = messageModel;</span>
+<span class="nc" id="L193">    }</span>
+
+    public MessageQueueListener getMessageQueueListener() {
+<span class="nc" id="L196">        return messageQueueListener;</span>
+    }
+
+    public void setMessageQueueListener(MessageQueueListener messageQueueListener) {
+<span class="nc" id="L200">        this.messageQueueListener = messageQueueListener;</span>
+<span class="nc" id="L201">    }</span>
+
+    public Set&lt;String&gt; getRegisterTopics() {
+<span class="fc" id="L204">        return registerTopics;</span>
+    }
+
+    public void setRegisterTopics(Set&lt;String&gt; registerTopics) {
+<span class="nc" id="L208">        this.registerTopics = registerTopics;</span>
+<span class="nc" id="L209">    }</span>
+
+    @Override
+    public void sendMessageBack(MessageExt msg, int delayLevel)
+        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+<span class="nc" id="L214">        this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, null);</span>
+<span class="nc" id="L215">    }</span>
+
+    @Override
+    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName)
+        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+<span class="nc" id="L220">        this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName);</span>
+<span class="nc" id="L221">    }</span>
+
+    @Override
+    public Set&lt;MessageQueue&gt; fetchSubscribeMessageQueues(String topic) throws MQClientException {
+<span class="nc" id="L225">        return this.defaultMQPullConsumerImpl.fetchSubscribeMessageQueues(topic);</span>
+    }
+
+    @Override
+    public void start() throws MQClientException {
+<span class="fc" id="L230">        this.defaultMQPullConsumerImpl.start();</span>
+<span class="fc" id="L231">    }</span>
+
+    @Override
+    public void shutdown() {
+<span class="fc" id="L235">        this.defaultMQPullConsumerImpl.shutdown();</span>
+<span class="fc" id="L236">    }</span>
+
+    @Override
+    public void registerMessageQueueListener(String topic, MessageQueueListener listener) {
+<span class="nc" id="L240">        synchronized (this.registerTopics) {</span>
+<span class="nc" id="L241">            this.registerTopics.add(topic);</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">            if (listener != null) {</span>
+<span class="nc" id="L243">                this.messageQueueListener = listener;</span>
+            }
+<span class="nc" id="L245">        }</span>
+<span class="nc" id="L246">    }</span>
+
+    @Override
+    public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums)
+        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+<span class="fc" id="L251">        return this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums);</span>
+    }
+
+    @Override
+    public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums, long timeout)
+        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+<span class="nc" id="L257">        return this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums, timeout);</span>
+    }
+
+    @Override
+    public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback)
+        throws MQClientException, RemotingException, InterruptedException {
+<span class="fc" id="L263">        this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums, pullCallback);</span>
+<span class="fc" id="L264">    }</span>
+
+    @Override
+    public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback, long timeout)
+        throws MQClientException, RemotingException, InterruptedException {
+<span class="nc" id="L269">        this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums, pullCallback, timeout);</span>
+<span class="nc" id="L270">    }</span>
+
+    @Override
+    public PullResult pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums)
+        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+<span class="nc" id="L275">        return this.defaultMQPullConsumerImpl.pullBlockIfNotFound(mq, subExpression, offset, maxNums);</span>
+    }
+
+    @Override
+    public void pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback)
+        throws MQClientException, RemotingException, InterruptedException {
+<span class="nc" id="L281">        this.defaultMQPullConsumerImpl.pullBlockIfNotFound(mq, subExpression, offset, maxNums, pullCallback);</span>
+<span class="nc" id="L282">    }</span>
+
+    @Override
+    public void updateConsumeOffset(MessageQueue mq, long offset) throws MQClientException {
+<span class="nc" id="L286">        this.defaultMQPullConsumerImpl.updateConsumeOffset(mq, offset);</span>
+<span class="nc" id="L287">    }</span>
+
+    @Override
+    public long fetchConsumeOffset(MessageQueue mq, boolean fromStore) throws MQClientException {
+<span class="nc" id="L291">        return this.defaultMQPullConsumerImpl.fetchConsumeOffset(mq, fromStore);</span>
+    }
+
+    @Override
+    public Set&lt;MessageQueue&gt; fetchMessageQueuesInBalance(String topic) throws MQClientException {
+<span class="nc" id="L296">        return this.defaultMQPullConsumerImpl.fetchMessageQueuesInBalance(topic);</span>
+    }
+
+    @Override
+    public MessageExt viewMessage(String topic, String uniqKey) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        try {
+<span class="nc" id="L302">            MessageDecoder.decodeMessageId(uniqKey);</span>
+<span class="nc" id="L303">            return this.viewMessage(uniqKey);</span>
+<span class="nc" id="L304">        } catch (Exception e) {</span>
+            // Ignore
+        }
+<span class="nc" id="L307">        return this.defaultMQPullConsumerImpl.queryMessageByUniqKey(topic, uniqKey);</span>
+    }
+
+    @Override
+    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName, String consumerGroup)
+        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+<span class="nc" id="L313">        this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName, consumerGroup);</span>
+<span class="nc" id="L314">    }</span>
+
+    public OffsetStore getOffsetStore() {
+<span class="fc" id="L317">        return offsetStore;</span>
+    }
+
+    public void setOffsetStore(OffsetStore offsetStore) {
+<span class="nc" id="L321">        this.offsetStore = offsetStore;</span>
+<span class="nc" id="L322">    }</span>
+
+    public DefaultMQPullConsumerImpl getDefaultMQPullConsumerImpl() {
+<span class="fc" id="L325">        return defaultMQPullConsumerImpl;</span>
+    }
+
+    public boolean isUnitMode() {
+<span class="fc" id="L329">        return unitMode;</span>
+    }
+
+    public void setUnitMode(boolean isUnitMode) {
+<span class="nc" id="L333">        this.unitMode = isUnitMode;</span>
+<span class="nc" id="L334">    }</span>
+
+    public int getMaxReconsumeTimes() {
+<span class="nc" id="L337">        return maxReconsumeTimes;</span>
+    }
+
+    public void setMaxReconsumeTimes(final int maxReconsumeTimes) {
+<span class="nc" id="L341">        this.maxReconsumeTimes = maxReconsumeTimes;</span>
+<span class="nc" id="L342">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

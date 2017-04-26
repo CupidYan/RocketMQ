@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MessageStoreConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store.config</a> &gt; <span class="el_source">MessageStoreConfig.java</span></div><h1>MessageStoreConfig.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store.config;
+
+import java.io.File;
+import org.apache.rocketmq.common.annotation.ImportantField;
+import org.apache.rocketmq.store.ConsumeQueue;
+
+<span class="fc" id="L23">public class MessageStoreConfig {</span>
+    //The root directory in which the log data is kept
+<span class="fc" id="L25">    @ImportantField</span>
+<span class="fc" id="L26">    private String storePathRootDir = System.getProperty(&quot;user.home&quot;) + File.separator + &quot;store&quot;;</span>
+
+    //The directory in which the commitlog is kept
+<span class="fc" id="L29">    @ImportantField</span>
+<span class="fc" id="L30">    private String storePathCommitLog = System.getProperty(&quot;user.home&quot;) + File.separator + &quot;store&quot;</span>
+        + File.separator + &quot;commitlog&quot;;
+
+    // CommitLog file size,default is 1G
+<span class="fc" id="L34">    private int mapedFileSizeCommitLog = 1024 * 1024 * 1024;</span>
+    // ConsumeQueue file size,default is 30W
+<span class="fc" id="L36">    private int mapedFileSizeConsumeQueue = 300000 * ConsumeQueue.CQ_STORE_UNIT_SIZE;</span>
+
+    // CommitLog flush interval
+    // flush data to disk
+<span class="fc" id="L40">    @ImportantField</span>
+    private int flushIntervalCommitLog = 500;
+
+    // Only used if TransientStorePool enabled
+    // flush data to FileChannel
+<span class="fc" id="L45">    @ImportantField</span>
+    private int commitIntervalCommitLog = 200;
+
+<span class="fc" id="L48">    private boolean useReentrantLockWhenPutMessage = false;</span>
+
+    // Whether schedule flush,default is real-time
+<span class="fc" id="L51">    @ImportantField</span>
+    private boolean flushCommitLogTimed = false;
+    // ConsumeQueue flush interval
+<span class="fc" id="L54">    private int flushIntervalConsumeQueue = 1000;</span>
+    // Resource reclaim interval
+<span class="fc" id="L56">    private int cleanResourceInterval = 10000;</span>
+    // CommitLog removal interval
+<span class="fc" id="L58">    private int deleteCommitLogFilesInterval = 100;</span>
+    // ConsumeQueue removal interval
+<span class="fc" id="L60">    private int deleteConsumeQueueFilesInterval = 100;</span>
+<span class="fc" id="L61">    private int destroyMapedFileIntervalForcibly = 1000 * 120;</span>
+<span class="fc" id="L62">    private int redeleteHangedFileInterval = 1000 * 120;</span>
+    // When to delete,default is at 4 am
+<span class="fc" id="L64">    @ImportantField</span>
+    private String deleteWhen = &quot;04&quot;;
+<span class="fc" id="L66">    private int diskMaxUsedSpaceRatio = 75;</span>
+    // The number of hours to keep a log file before deleting it (in hours)
+<span class="fc" id="L68">    @ImportantField</span>
+    private int fileReservedTime = 72;
+    // Flow control for ConsumeQueue
+<span class="fc" id="L71">    private int putMsgIndexHightWater = 600000;</span>
+    // The maximum size of a single log file,default is 512K
+<span class="fc" id="L73">    private int maxMessageSize = 1024 * 1024 * 4;</span>
+    // Whether check the CRC32 of the records consumed.
+    // This ensures no on-the-wire or on-disk corruption to the messages occurred.
+    // This check adds some overhead,so it may be disabled in cases seeking extreme performance.
+<span class="fc" id="L77">    private boolean checkCRCOnRecover = true;</span>
+    // How many pages are to be flushed when flush CommitLog
+<span class="fc" id="L79">    private int flushCommitLogLeastPages = 4;</span>
+    // How many pages are to be committed when commit data to file
+<span class="fc" id="L81">    private int commitCommitLogLeastPages = 4;</span>
+    // Flush page size when the disk in warming state
+<span class="fc" id="L83">    private int flushLeastPagesWhenWarmMapedFile = 1024 / 4 * 16;</span>
+    // How many pages are to be flushed when flush ConsumeQueue
+<span class="fc" id="L85">    private int flushConsumeQueueLeastPages = 2;</span>
+<span class="fc" id="L86">    private int flushCommitLogThoroughInterval = 1000 * 10;</span>
+<span class="fc" id="L87">    private int commitCommitLogThoroughInterval = 200;</span>
+<span class="fc" id="L88">    private int flushConsumeQueueThoroughInterval = 1000 * 60;</span>
+<span class="fc" id="L89">    @ImportantField</span>
+    private int maxTransferBytesOnMessageInMemory = 1024 * 256;
+<span class="fc" id="L91">    @ImportantField</span>
+    private int maxTransferCountOnMessageInMemory = 32;
+<span class="fc" id="L93">    @ImportantField</span>
+    private int maxTransferBytesOnMessageInDisk = 1024 * 64;
+<span class="fc" id="L95">    @ImportantField</span>
+    private int maxTransferCountOnMessageInDisk = 8;
+<span class="fc" id="L97">    @ImportantField</span>
+    private int accessMessageInMemoryMaxRatio = 40;
+<span class="fc" id="L99">    @ImportantField</span>
+    private boolean messageIndexEnable = true;
+<span class="fc" id="L101">    private int maxHashSlotNum = 5000000;</span>
+<span class="fc" id="L102">    private int maxIndexNum = 5000000 * 4;</span>
+<span class="fc" id="L103">    private int maxMsgsNumBatch = 64;</span>
+<span class="fc" id="L104">    @ImportantField</span>
+    private boolean messageIndexSafe = false;
+<span class="fc" id="L106">    private int haListenPort = 10912;</span>
+<span class="fc" id="L107">    private int haSendHeartbeatInterval = 1000 * 5;</span>
+<span class="fc" id="L108">    private int haHousekeepingInterval = 1000 * 20;</span>
+<span class="fc" id="L109">    private int haTransferBatchSize = 1024 * 32;</span>
+<span class="fc" id="L110">    @ImportantField</span>
+    private String haMasterAddress = null;
+<span class="fc" id="L112">    private int haSlaveFallbehindMax = 1024 * 1024 * 256;</span>
+<span class="fc" id="L113">    @ImportantField</span>
+    private BrokerRole brokerRole = BrokerRole.ASYNC_MASTER;
+<span class="fc" id="L115">    @ImportantField</span>
+    private FlushDiskType flushDiskType = FlushDiskType.ASYNC_FLUSH;
+<span class="fc" id="L117">    private int syncFlushTimeout = 1000 * 5;</span>
+<span class="fc" id="L118">    private String messageDelayLevel = &quot;1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h&quot;;</span>
+<span class="fc" id="L119">    private long flushDelayOffsetInterval = 1000 * 10;</span>
+<span class="fc" id="L120">    @ImportantField</span>
+    private boolean cleanFileForciblyEnable = true;
+<span class="fc" id="L122">    private boolean warmMapedFileEnable = false;</span>
+<span class="fc" id="L123">    private boolean offsetCheckInSlave = false;</span>
+<span class="fc" id="L124">    private boolean debugLockEnable = false;</span>
+<span class="fc" id="L125">    private boolean duplicationEnable = false;</span>
+<span class="fc" id="L126">    private boolean diskFallRecorded = true;</span>
+<span class="fc" id="L127">    private long osPageCacheBusyTimeOutMills = 1000;</span>
+<span class="fc" id="L128">    private int defaultQueryMaxNum = 32;</span>
+
+<span class="fc" id="L130">    @ImportantField</span>
+    private boolean transientStorePoolEnable = false;
+<span class="fc" id="L132">    private int transientStorePoolSize = 5;</span>
+<span class="fc" id="L133">    private boolean fastFailIfNoBufferInStorePool = false;</span>
+
+    public boolean isDebugLockEnable() {
+<span class="nc" id="L136">        return debugLockEnable;</span>
+    }
+
+    public void setDebugLockEnable(final boolean debugLockEnable) {
+<span class="nc" id="L140">        this.debugLockEnable = debugLockEnable;</span>
+<span class="nc" id="L141">    }</span>
+
+    public boolean isDuplicationEnable() {
+<span class="fc" id="L144">        return duplicationEnable;</span>
+    }
+
+    public void setDuplicationEnable(final boolean duplicationEnable) {
+<span class="nc" id="L148">        this.duplicationEnable = duplicationEnable;</span>
+<span class="nc" id="L149">    }</span>
+
+    public long getOsPageCacheBusyTimeOutMills() {
+<span class="nc" id="L152">        return osPageCacheBusyTimeOutMills;</span>
+    }
+
+    public void setOsPageCacheBusyTimeOutMills(final long osPageCacheBusyTimeOutMills) {
+<span class="nc" id="L156">        this.osPageCacheBusyTimeOutMills = osPageCacheBusyTimeOutMills;</span>
+<span class="nc" id="L157">    }</span>
+
+    public boolean isDiskFallRecorded() {
+<span class="nc" id="L160">        return diskFallRecorded;</span>
+    }
+
+    public void setDiskFallRecorded(final boolean diskFallRecorded) {
+<span class="nc" id="L164">        this.diskFallRecorded = diskFallRecorded;</span>
+<span class="nc" id="L165">    }</span>
+
+    public boolean isWarmMapedFileEnable() {
+<span class="fc" id="L168">        return warmMapedFileEnable;</span>
+    }
+
+    public void setWarmMapedFileEnable(boolean warmMapedFileEnable) {
+<span class="nc" id="L172">        this.warmMapedFileEnable = warmMapedFileEnable;</span>
+<span class="nc" id="L173">    }</span>
+
+    public int getMapedFileSizeCommitLog() {
+<span class="fc" id="L176">        return mapedFileSizeCommitLog;</span>
+    }
+
+    public void setMapedFileSizeCommitLog(int mapedFileSizeCommitLog) {
+<span class="fc" id="L180">        this.mapedFileSizeCommitLog = mapedFileSizeCommitLog;</span>
+<span class="fc" id="L181">    }</span>
+
+    public int getMapedFileSizeConsumeQueue() {
+
+<span class="fc" id="L185">        int factor = (int) Math.ceil(this.mapedFileSizeConsumeQueue / (ConsumeQueue.CQ_STORE_UNIT_SIZE * 1.0));</span>
+<span class="fc" id="L186">        return (int) (factor * ConsumeQueue.CQ_STORE_UNIT_SIZE);</span>
+    }
+
+    public void setMapedFileSizeConsumeQueue(int mapedFileSizeConsumeQueue) {
+<span class="fc" id="L190">        this.mapedFileSizeConsumeQueue = mapedFileSizeConsumeQueue;</span>
+<span class="fc" id="L191">    }</span>
+
+    public int getFlushIntervalCommitLog() {
+<span class="fc" id="L194">        return flushIntervalCommitLog;</span>
+    }
+
+    public void setFlushIntervalCommitLog(int flushIntervalCommitLog) {
+<span class="nc" id="L198">        this.flushIntervalCommitLog = flushIntervalCommitLog;</span>
+<span class="nc" id="L199">    }</span>
+
+    public int getFlushIntervalConsumeQueue() {
+<span class="fc" id="L202">        return flushIntervalConsumeQueue;</span>
+    }
+
+    public void setFlushIntervalConsumeQueue(int flushIntervalConsumeQueue) {
+<span class="nc" id="L206">        this.flushIntervalConsumeQueue = flushIntervalConsumeQueue;</span>
+<span class="nc" id="L207">    }</span>
+
+    public int getPutMsgIndexHightWater() {
+<span class="nc" id="L210">        return putMsgIndexHightWater;</span>
+    }
+
+    public void setPutMsgIndexHightWater(int putMsgIndexHightWater) {
+<span class="nc" id="L214">        this.putMsgIndexHightWater = putMsgIndexHightWater;</span>
+<span class="nc" id="L215">    }</span>
+
+    public int getCleanResourceInterval() {
+<span class="fc" id="L218">        return cleanResourceInterval;</span>
+    }
+
+    public void setCleanResourceInterval(int cleanResourceInterval) {
+<span class="nc" id="L222">        this.cleanResourceInterval = cleanResourceInterval;</span>
+<span class="nc" id="L223">    }</span>
+
+    public int getMaxMessageSize() {
+<span class="fc" id="L226">        return maxMessageSize;</span>
+    }
+
+    public void setMaxMessageSize(int maxMessageSize) {
+<span class="nc" id="L230">        this.maxMessageSize = maxMessageSize;</span>
+<span class="nc" id="L231">    }</span>
+
+    public boolean isCheckCRCOnRecover() {
+<span class="fc" id="L234">        return checkCRCOnRecover;</span>
+    }
+
+    public boolean getCheckCRCOnRecover() {
+<span class="nc" id="L238">        return checkCRCOnRecover;</span>
+    }
+
+    public void setCheckCRCOnRecover(boolean checkCRCOnRecover) {
+<span class="nc" id="L242">        this.checkCRCOnRecover = checkCRCOnRecover;</span>
+<span class="nc" id="L243">    }</span>
+
+    public String getStorePathCommitLog() {
+<span class="fc" id="L246">        return storePathCommitLog;</span>
+    }
+
+    public void setStorePathCommitLog(String storePathCommitLog) {
+<span class="nc" id="L250">        this.storePathCommitLog = storePathCommitLog;</span>
+<span class="nc" id="L251">    }</span>
+
+    public String getDeleteWhen() {
+<span class="nc" id="L254">        return deleteWhen;</span>
+    }
+
+    public void setDeleteWhen(String deleteWhen) {
+<span class="nc" id="L258">        this.deleteWhen = deleteWhen;</span>
+<span class="nc" id="L259">    }</span>
+
+    public int getDiskMaxUsedSpaceRatio() {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (this.diskMaxUsedSpaceRatio &lt; 10)</span>
+<span class="nc" id="L263">            return 10;</span>
+
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (this.diskMaxUsedSpaceRatio &gt; 95)</span>
+<span class="nc" id="L266">            return 95;</span>
+
+<span class="nc" id="L268">        return diskMaxUsedSpaceRatio;</span>
+    }
+
+    public void setDiskMaxUsedSpaceRatio(int diskMaxUsedSpaceRatio) {
+<span class="nc" id="L272">        this.diskMaxUsedSpaceRatio = diskMaxUsedSpaceRatio;</span>
+<span class="nc" id="L273">    }</span>
+
+    public int getDeleteCommitLogFilesInterval() {
+<span class="nc" id="L276">        return deleteCommitLogFilesInterval;</span>
+    }
+
+    public void setDeleteCommitLogFilesInterval(int deleteCommitLogFilesInterval) {
+<span class="nc" id="L280">        this.deleteCommitLogFilesInterval = deleteCommitLogFilesInterval;</span>
+<span class="nc" id="L281">    }</span>
+
+    public int getDeleteConsumeQueueFilesInterval() {
+<span class="nc" id="L284">        return deleteConsumeQueueFilesInterval;</span>
+    }
+
+    public void setDeleteConsumeQueueFilesInterval(int deleteConsumeQueueFilesInterval) {
+<span class="nc" id="L288">        this.deleteConsumeQueueFilesInterval = deleteConsumeQueueFilesInterval;</span>
+<span class="nc" id="L289">    }</span>
+
+    public int getMaxTransferBytesOnMessageInMemory() {
+<span class="nc" id="L292">        return maxTransferBytesOnMessageInMemory;</span>
+    }
+
+    public void setMaxTransferBytesOnMessageInMemory(int maxTransferBytesOnMessageInMemory) {
+<span class="nc" id="L296">        this.maxTransferBytesOnMessageInMemory = maxTransferBytesOnMessageInMemory;</span>
+<span class="nc" id="L297">    }</span>
+
+    public int getMaxTransferCountOnMessageInMemory() {
+<span class="nc" id="L300">        return maxTransferCountOnMessageInMemory;</span>
+    }
+
+    public void setMaxTransferCountOnMessageInMemory(int maxTransferCountOnMessageInMemory) {
+<span class="nc" id="L304">        this.maxTransferCountOnMessageInMemory = maxTransferCountOnMessageInMemory;</span>
+<span class="nc" id="L305">    }</span>
+
+    public int getMaxTransferBytesOnMessageInDisk() {
+<span class="nc" id="L308">        return maxTransferBytesOnMessageInDisk;</span>
+    }
+
+    public void setMaxTransferBytesOnMessageInDisk(int maxTransferBytesOnMessageInDisk) {
+<span class="nc" id="L312">        this.maxTransferBytesOnMessageInDisk = maxTransferBytesOnMessageInDisk;</span>
+<span class="nc" id="L313">    }</span>
+
+    public int getMaxTransferCountOnMessageInDisk() {
+<span class="nc" id="L316">        return maxTransferCountOnMessageInDisk;</span>
+    }
+
+    public void setMaxTransferCountOnMessageInDisk(int maxTransferCountOnMessageInDisk) {
+<span class="nc" id="L320">        this.maxTransferCountOnMessageInDisk = maxTransferCountOnMessageInDisk;</span>
+<span class="nc" id="L321">    }</span>
+
+    public int getFlushCommitLogLeastPages() {
+<span class="fc" id="L324">        return flushCommitLogLeastPages;</span>
+    }
+
+    public void setFlushCommitLogLeastPages(int flushCommitLogLeastPages) {
+<span class="nc" id="L328">        this.flushCommitLogLeastPages = flushCommitLogLeastPages;</span>
+<span class="nc" id="L329">    }</span>
+
+    public int getFlushConsumeQueueLeastPages() {
+<span class="fc" id="L332">        return flushConsumeQueueLeastPages;</span>
+    }
+
+    public void setFlushConsumeQueueLeastPages(int flushConsumeQueueLeastPages) {
+<span class="nc" id="L336">        this.flushConsumeQueueLeastPages = flushConsumeQueueLeastPages;</span>
+<span class="nc" id="L337">    }</span>
+
+    public int getFlushCommitLogThoroughInterval() {
+<span class="fc" id="L340">        return flushCommitLogThoroughInterval;</span>
+    }
+
+    public void setFlushCommitLogThoroughInterval(int flushCommitLogThoroughInterval) {
+<span class="nc" id="L344">        this.flushCommitLogThoroughInterval = flushCommitLogThoroughInterval;</span>
+<span class="nc" id="L345">    }</span>
+
+    public int getFlushConsumeQueueThoroughInterval() {
+<span class="fc" id="L348">        return flushConsumeQueueThoroughInterval;</span>
+    }
+
+    public void setFlushConsumeQueueThoroughInterval(int flushConsumeQueueThoroughInterval) {
+<span class="nc" id="L352">        this.flushConsumeQueueThoroughInterval = flushConsumeQueueThoroughInterval;</span>
+<span class="nc" id="L353">    }</span>
+
+    public int getDestroyMapedFileIntervalForcibly() {
+<span class="nc" id="L356">        return destroyMapedFileIntervalForcibly;</span>
+    }
+
+    public void setDestroyMapedFileIntervalForcibly(int destroyMapedFileIntervalForcibly) {
+<span class="nc" id="L360">        this.destroyMapedFileIntervalForcibly = destroyMapedFileIntervalForcibly;</span>
+<span class="nc" id="L361">    }</span>
+
+    public int getFileReservedTime() {
+<span class="nc" id="L364">        return fileReservedTime;</span>
+    }
+
+    public void setFileReservedTime(int fileReservedTime) {
+<span class="nc" id="L368">        this.fileReservedTime = fileReservedTime;</span>
+<span class="nc" id="L369">    }</span>
+
+    public int getRedeleteHangedFileInterval() {
+<span class="nc" id="L372">        return redeleteHangedFileInterval;</span>
+    }
+
+    public void setRedeleteHangedFileInterval(int redeleteHangedFileInterval) {
+<span class="nc" id="L376">        this.redeleteHangedFileInterval = redeleteHangedFileInterval;</span>
+<span class="nc" id="L377">    }</span>
+
+    public int getAccessMessageInMemoryMaxRatio() {
+<span class="nc" id="L380">        return accessMessageInMemoryMaxRatio;</span>
+    }
+
+    public void setAccessMessageInMemoryMaxRatio(int accessMessageInMemoryMaxRatio) {
+<span class="nc" id="L384">        this.accessMessageInMemoryMaxRatio = accessMessageInMemoryMaxRatio;</span>
+<span class="nc" id="L385">    }</span>
+
+    public boolean isMessageIndexEnable() {
+<span class="fc" id="L388">        return messageIndexEnable;</span>
+    }
+
+    public void setMessageIndexEnable(boolean messageIndexEnable) {
+<span class="nc" id="L392">        this.messageIndexEnable = messageIndexEnable;</span>
+<span class="nc" id="L393">    }</span>
+
+    public int getMaxHashSlotNum() {
+<span class="fc" id="L396">        return maxHashSlotNum;</span>
+    }
+
+    public void setMaxHashSlotNum(int maxHashSlotNum) {
+<span class="fc" id="L400">        this.maxHashSlotNum = maxHashSlotNum;</span>
+<span class="fc" id="L401">    }</span>
+
+    public int getMaxIndexNum() {
+<span class="fc" id="L404">        return maxIndexNum;</span>
+    }
+
+    public void setMaxIndexNum(int maxIndexNum) {
+<span class="fc" id="L408">        this.maxIndexNum = maxIndexNum;</span>
+<span class="fc" id="L409">    }</span>
+
+    public int getMaxMsgsNumBatch() {
+<span class="nc" id="L412">        return maxMsgsNumBatch;</span>
+    }
+
+    public void setMaxMsgsNumBatch(int maxMsgsNumBatch) {
+<span class="nc" id="L416">        this.maxMsgsNumBatch = maxMsgsNumBatch;</span>
+<span class="nc" id="L417">    }</span>
+
+    public int getHaListenPort() {
+<span class="fc" id="L420">        return haListenPort;</span>
+    }
+
+    public void setHaListenPort(int haListenPort) {
+<span class="nc" id="L424">        this.haListenPort = haListenPort;</span>
+<span class="nc" id="L425">    }</span>
+
+    public int getHaSendHeartbeatInterval() {
+<span class="nc" id="L428">        return haSendHeartbeatInterval;</span>
+    }
+
+    public void setHaSendHeartbeatInterval(int haSendHeartbeatInterval) {
+<span class="nc" id="L432">        this.haSendHeartbeatInterval = haSendHeartbeatInterval;</span>
+<span class="nc" id="L433">    }</span>
+
+    public int getHaHousekeepingInterval() {
+<span class="nc" id="L436">        return haHousekeepingInterval;</span>
+    }
+
+    public void setHaHousekeepingInterval(int haHousekeepingInterval) {
+<span class="nc" id="L440">        this.haHousekeepingInterval = haHousekeepingInterval;</span>
+<span class="nc" id="L441">    }</span>
+
+    public BrokerRole getBrokerRole() {
+<span class="fc" id="L444">        return brokerRole;</span>
+    }
+
+    public void setBrokerRole(BrokerRole brokerRole) {
+<span class="nc" id="L448">        this.brokerRole = brokerRole;</span>
+<span class="nc" id="L449">    }</span>
+
+    public void setBrokerRole(String brokerRole) {
+<span class="nc" id="L452">        this.brokerRole = BrokerRole.valueOf(brokerRole);</span>
+<span class="nc" id="L453">    }</span>
+
+    public int getHaTransferBatchSize() {
+<span class="nc" id="L456">        return haTransferBatchSize;</span>
+    }
+
+    public void setHaTransferBatchSize(int haTransferBatchSize) {
+<span class="nc" id="L460">        this.haTransferBatchSize = haTransferBatchSize;</span>
+<span class="nc" id="L461">    }</span>
+
+    public int getHaSlaveFallbehindMax() {
+<span class="nc" id="L464">        return haSlaveFallbehindMax;</span>
+    }
+
+    public void setHaSlaveFallbehindMax(int haSlaveFallbehindMax) {
+<span class="nc" id="L468">        this.haSlaveFallbehindMax = haSlaveFallbehindMax;</span>
+<span class="nc" id="L469">    }</span>
+
+    public FlushDiskType getFlushDiskType() {
+<span class="fc" id="L472">        return flushDiskType;</span>
+    }
+
+    public void setFlushDiskType(FlushDiskType flushDiskType) {
+<span class="fc" id="L476">        this.flushDiskType = flushDiskType;</span>
+<span class="fc" id="L477">    }</span>
+
+    public void setFlushDiskType(String type) {
+<span class="nc" id="L480">        this.flushDiskType = FlushDiskType.valueOf(type);</span>
+<span class="nc" id="L481">    }</span>
+
+    public int getSyncFlushTimeout() {
+<span class="fc" id="L484">        return syncFlushTimeout;</span>
+    }
+
+    public void setSyncFlushTimeout(int syncFlushTimeout) {
+<span class="nc" id="L488">        this.syncFlushTimeout = syncFlushTimeout;</span>
+<span class="nc" id="L489">    }</span>
+
+    public String getHaMasterAddress() {
+<span class="nc" id="L492">        return haMasterAddress;</span>
+    }
+
+    public void setHaMasterAddress(String haMasterAddress) {
+<span class="nc" id="L496">        this.haMasterAddress = haMasterAddress;</span>
+<span class="nc" id="L497">    }</span>
+
+    public String getMessageDelayLevel() {
+<span class="fc" id="L500">        return messageDelayLevel;</span>
+    }
+
+    public void setMessageDelayLevel(String messageDelayLevel) {
+<span class="nc" id="L504">        this.messageDelayLevel = messageDelayLevel;</span>
+<span class="nc" id="L505">    }</span>
+
+    public long getFlushDelayOffsetInterval() {
+<span class="fc" id="L508">        return flushDelayOffsetInterval;</span>
+    }
+
+    public void setFlushDelayOffsetInterval(long flushDelayOffsetInterval) {
+<span class="nc" id="L512">        this.flushDelayOffsetInterval = flushDelayOffsetInterval;</span>
+<span class="nc" id="L513">    }</span>
+
+    public boolean isCleanFileForciblyEnable() {
+<span class="nc" id="L516">        return cleanFileForciblyEnable;</span>
+    }
+
+    public void setCleanFileForciblyEnable(boolean cleanFileForciblyEnable) {
+<span class="nc" id="L520">        this.cleanFileForciblyEnable = cleanFileForciblyEnable;</span>
+<span class="nc" id="L521">    }</span>
+
+    public boolean isMessageIndexSafe() {
+<span class="nc" id="L524">        return messageIndexSafe;</span>
+    }
+
+    public void setMessageIndexSafe(boolean messageIndexSafe) {
+<span class="nc" id="L528">        this.messageIndexSafe = messageIndexSafe;</span>
+<span class="nc" id="L529">    }</span>
+
+    public boolean isFlushCommitLogTimed() {
+<span class="fc" id="L532">        return flushCommitLogTimed;</span>
+    }
+
+    public void setFlushCommitLogTimed(boolean flushCommitLogTimed) {
+<span class="nc" id="L536">        this.flushCommitLogTimed = flushCommitLogTimed;</span>
+<span class="nc" id="L537">    }</span>
+
+    public String getStorePathRootDir() {
+<span class="fc" id="L540">        return storePathRootDir;</span>
+    }
+
+    public void setStorePathRootDir(String storePathRootDir) {
+<span class="nc" id="L544">        this.storePathRootDir = storePathRootDir;</span>
+<span class="nc" id="L545">    }</span>
+
+    public int getFlushLeastPagesWhenWarmMapedFile() {
+<span class="nc" id="L548">        return flushLeastPagesWhenWarmMapedFile;</span>
+    }
+
+    public void setFlushLeastPagesWhenWarmMapedFile(int flushLeastPagesWhenWarmMapedFile) {
+<span class="nc" id="L552">        this.flushLeastPagesWhenWarmMapedFile = flushLeastPagesWhenWarmMapedFile;</span>
+<span class="nc" id="L553">    }</span>
+
+    public boolean isOffsetCheckInSlave() {
+<span class="nc" id="L556">        return offsetCheckInSlave;</span>
+    }
+
+    public void setOffsetCheckInSlave(boolean offsetCheckInSlave) {
+<span class="nc" id="L560">        this.offsetCheckInSlave = offsetCheckInSlave;</span>
+<span class="nc" id="L561">    }</span>
+
+    public int getDefaultQueryMaxNum() {
+<span class="nc" id="L564">        return defaultQueryMaxNum;</span>
+    }
+
+    public void setDefaultQueryMaxNum(int defaultQueryMaxNum) {
+<span class="nc" id="L568">        this.defaultQueryMaxNum = defaultQueryMaxNum;</span>
+<span class="nc" id="L569">    }</span>
+
+    /**
+     * Enable transient commitLog store poll only if transientStorePoolEnable is true and the FlushDiskType is ASYNC_FLUSH
+     *
+     * @return &lt;tt&gt;true&lt;/tt&gt; or &lt;tt&gt;false&lt;/tt&gt;
+     */
+    public boolean isTransientStorePoolEnable() {
+<span class="pc bpc" id="L577" title="3 of 4 branches missed.">        return transientStorePoolEnable &amp;&amp; FlushDiskType.ASYNC_FLUSH == getFlushDiskType()</span>
+<span class="pc bnc" id="L578" title="All 2 branches missed.">            &amp;&amp; BrokerRole.SLAVE != getBrokerRole();</span>
+    }
+
+    public void setTransientStorePoolEnable(final boolean transientStorePoolEnable) {
+<span class="nc" id="L582">        this.transientStorePoolEnable = transientStorePoolEnable;</span>
+<span class="nc" id="L583">    }</span>
+
+    public int getTransientStorePoolSize() {
+<span class="fc" id="L586">        return transientStorePoolSize;</span>
+    }
+
+    public void setTransientStorePoolSize(final int transientStorePoolSize) {
+<span class="nc" id="L590">        this.transientStorePoolSize = transientStorePoolSize;</span>
+<span class="nc" id="L591">    }</span>
+
+    public int getCommitIntervalCommitLog() {
+<span class="nc" id="L594">        return commitIntervalCommitLog;</span>
+    }
+
+    public void setCommitIntervalCommitLog(final int commitIntervalCommitLog) {
+<span class="nc" id="L598">        this.commitIntervalCommitLog = commitIntervalCommitLog;</span>
+<span class="nc" id="L599">    }</span>
+
+    public boolean isFastFailIfNoBufferInStorePool() {
+<span class="nc" id="L602">        return fastFailIfNoBufferInStorePool;</span>
+    }
+
+    public void setFastFailIfNoBufferInStorePool(final boolean fastFailIfNoBufferInStorePool) {
+<span class="nc" id="L606">        this.fastFailIfNoBufferInStorePool = fastFailIfNoBufferInStorePool;</span>
+<span class="nc" id="L607">    }</span>
+
+    public boolean isUseReentrantLockWhenPutMessage() {
+<span class="fc" id="L610">        return useReentrantLockWhenPutMessage;</span>
+    }
+
+    public void setUseReentrantLockWhenPutMessage(final boolean useReentrantLockWhenPutMessage) {
+<span class="nc" id="L614">        this.useReentrantLockWhenPutMessage = useReentrantLockWhenPutMessage;</span>
+<span class="nc" id="L615">    }</span>
+
+    public int getCommitCommitLogLeastPages() {
+<span class="nc" id="L618">        return commitCommitLogLeastPages;</span>
+    }
+
+    public void setCommitCommitLogLeastPages(final int commitCommitLogLeastPages) {
+<span class="nc" id="L622">        this.commitCommitLogLeastPages = commitCommitLogLeastPages;</span>
+<span class="nc" id="L623">    }</span>
+
+    public int getCommitCommitLogThoroughInterval() {
+<span class="nc" id="L626">        return commitCommitLogThoroughInterval;</span>
+    }
+
+    public void setCommitCommitLogThoroughInterval(final int commitCommitLogThoroughInterval) {
+<span class="nc" id="L630">        this.commitCommitLogThoroughInterval = commitCommitLogThoroughInterval;</span>
+<span class="nc" id="L631">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

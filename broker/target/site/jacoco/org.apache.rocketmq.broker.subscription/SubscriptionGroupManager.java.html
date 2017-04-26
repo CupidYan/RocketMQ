@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionGroupManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.subscription</a> &gt; <span class="el_source">SubscriptionGroupManager.java</span></div><h1>SubscriptionGroupManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.subscription;
+
+import java.util.Iterator;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.broker.BrokerPathConfigHelper;
+import org.apache.rocketmq.common.ConfigManager;
+import org.apache.rocketmq.common.DataVersion;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class SubscriptionGroupManager extends ConfigManager {
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+
+<span class="fc" id="L36">    private final ConcurrentHashMap&lt;String, SubscriptionGroupConfig&gt; subscriptionGroupTable =</span>
+        new ConcurrentHashMap&lt;String, SubscriptionGroupConfig&gt;(1024);
+<span class="fc" id="L38">    private final DataVersion dataVersion = new DataVersion();</span>
+    private transient BrokerController brokerController;
+
+<span class="fc" id="L41">    public SubscriptionGroupManager() {</span>
+<span class="fc" id="L42">        this.init();</span>
+<span class="fc" id="L43">    }</span>
+
+<span class="fc" id="L45">    public SubscriptionGroupManager(BrokerController brokerController) {</span>
+<span class="fc" id="L46">        this.brokerController = brokerController;</span>
+<span class="fc" id="L47">        this.init();</span>
+<span class="fc" id="L48">    }</span>
+
+    private void init() {
+        {
+<span class="fc" id="L52">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L53">            subscriptionGroupConfig.setGroupName(MixAll.TOOLS_CONSUMER_GROUP);</span>
+<span class="fc" id="L54">            this.subscriptionGroupTable.put(MixAll.TOOLS_CONSUMER_GROUP, subscriptionGroupConfig);</span>
+        }
+
+        {
+<span class="fc" id="L58">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L59">            subscriptionGroupConfig.setGroupName(MixAll.FILTERSRV_CONSUMER_GROUP);</span>
+<span class="fc" id="L60">            this.subscriptionGroupTable.put(MixAll.FILTERSRV_CONSUMER_GROUP, subscriptionGroupConfig);</span>
+        }
+
+        {
+<span class="fc" id="L64">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L65">            subscriptionGroupConfig.setGroupName(MixAll.SELF_TEST_CONSUMER_GROUP);</span>
+<span class="fc" id="L66">            this.subscriptionGroupTable.put(MixAll.SELF_TEST_CONSUMER_GROUP, subscriptionGroupConfig);</span>
+        }
+
+        {
+<span class="fc" id="L70">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L71">            subscriptionGroupConfig.setGroupName(MixAll.ONS_HTTP_PROXY_GROUP);</span>
+<span class="fc" id="L72">            subscriptionGroupConfig.setConsumeBroadcastEnable(true);</span>
+<span class="fc" id="L73">            this.subscriptionGroupTable.put(MixAll.ONS_HTTP_PROXY_GROUP, subscriptionGroupConfig);</span>
+        }
+
+        {
+<span class="fc" id="L77">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L78">            subscriptionGroupConfig.setGroupName(MixAll.CID_ONSAPI_PULL_GROUP);</span>
+<span class="fc" id="L79">            subscriptionGroupConfig.setConsumeBroadcastEnable(true);</span>
+<span class="fc" id="L80">            this.subscriptionGroupTable.put(MixAll.CID_ONSAPI_PULL_GROUP, subscriptionGroupConfig);</span>
+        }
+
+        {
+<span class="fc" id="L84">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L85">            subscriptionGroupConfig.setGroupName(MixAll.CID_ONSAPI_PERMISSION_GROUP);</span>
+<span class="fc" id="L86">            subscriptionGroupConfig.setConsumeBroadcastEnable(true);</span>
+<span class="fc" id="L87">            this.subscriptionGroupTable.put(MixAll.CID_ONSAPI_PERMISSION_GROUP, subscriptionGroupConfig);</span>
+        }
+
+        {
+<span class="fc" id="L91">            SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L92">            subscriptionGroupConfig.setGroupName(MixAll.CID_ONSAPI_OWNER_GROUP);</span>
+<span class="fc" id="L93">            subscriptionGroupConfig.setConsumeBroadcastEnable(true);</span>
+<span class="fc" id="L94">            this.subscriptionGroupTable.put(MixAll.CID_ONSAPI_OWNER_GROUP, subscriptionGroupConfig);</span>
+        }
+<span class="fc" id="L96">    }</span>
+
+    public void updateSubscriptionGroupConfig(final SubscriptionGroupConfig config) {
+<span class="nc" id="L99">        SubscriptionGroupConfig old = this.subscriptionGroupTable.put(config.getGroupName(), config);</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (old != null) {</span>
+<span class="nc" id="L101">            log.info(&quot;update subscription group config, old: {} new: {}&quot;, old, config);</span>
+        } else {
+<span class="nc" id="L103">            log.info(&quot;create new subscription group, {}&quot;, config);</span>
+        }
+
+<span class="nc" id="L106">        this.dataVersion.nextVersion();</span>
+
+<span class="nc" id="L108">        this.persist();</span>
+<span class="nc" id="L109">    }</span>
+
+    public void disableConsume(final String groupName) {
+<span class="nc" id="L112">        SubscriptionGroupConfig old = this.subscriptionGroupTable.get(groupName);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (old != null) {</span>
+<span class="nc" id="L114">            old.setConsumeEnable(false);</span>
+<span class="nc" id="L115">            this.dataVersion.nextVersion();</span>
+        }
+<span class="nc" id="L117">    }</span>
+
+    public SubscriptionGroupConfig findSubscriptionGroupConfig(final String group) {
+<span class="fc" id="L120">        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(group);</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (null == subscriptionGroupConfig) {</span>
+<span class="pc bpc" id="L122" title="3 of 4 branches missed.">            if (brokerController.getBrokerConfig().isAutoCreateSubscriptionGroup() || MixAll.isSysConsumerGroup(group)) {</span>
+<span class="fc" id="L123">                subscriptionGroupConfig = new SubscriptionGroupConfig();</span>
+<span class="fc" id="L124">                subscriptionGroupConfig.setGroupName(group);</span>
+<span class="fc" id="L125">                SubscriptionGroupConfig preConfig = this.subscriptionGroupTable.putIfAbsent(group, subscriptionGroupConfig);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                if (null == preConfig) {</span>
+<span class="fc" id="L127">                    log.info(&quot;auto create a subscription group, {}&quot;, subscriptionGroupConfig.toString());</span>
+                }
+<span class="fc" id="L129">                this.dataVersion.nextVersion();</span>
+<span class="fc" id="L130">                this.persist();</span>
+            }
+        }
+
+<span class="fc" id="L134">        return subscriptionGroupConfig;</span>
+    }
+
+    @Override
+    public String encode() {
+<span class="nc" id="L139">        return this.encode(false);</span>
+    }
+
+    @Override
+    public String configFilePath() {
+<span class="fc" id="L144">        return BrokerPathConfigHelper.getSubscriptionGroupPath(this.brokerController.getMessageStoreConfig()</span>
+<span class="fc" id="L145">                .getStorePathRootDir());</span>
+    }
+
+    @Override
+    public void decode(String jsonString) {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (jsonString != null) {</span>
+<span class="fc" id="L151">            SubscriptionGroupManager obj = RemotingSerializable.fromJson(jsonString, SubscriptionGroupManager.class);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (obj != null) {</span>
+<span class="fc" id="L153">                this.subscriptionGroupTable.putAll(obj.subscriptionGroupTable);</span>
+<span class="fc" id="L154">                this.dataVersion.assignNewOne(obj.dataVersion);</span>
+<span class="fc" id="L155">                this.printLoadDataWhenFirstBoot(obj);</span>
+            }
+        }
+<span class="fc" id="L158">    }</span>
+
+    public String encode(final boolean prettyFormat) {
+<span class="fc" id="L161">        return RemotingSerializable.toJson(this, prettyFormat);</span>
+    }
+
+    private void printLoadDataWhenFirstBoot(final SubscriptionGroupManager sgm) {
+<span class="fc" id="L165">        Iterator&lt;Entry&lt;String, SubscriptionGroupConfig&gt;&gt; it = sgm.getSubscriptionGroupTable().entrySet().iterator();</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L167">            Entry&lt;String, SubscriptionGroupConfig&gt; next = it.next();</span>
+<span class="fc" id="L168">            log.info(&quot;load exist subscription group, {}&quot;, next.getValue().toString());</span>
+<span class="fc" id="L169">        }</span>
+<span class="fc" id="L170">    }</span>
+
+    public ConcurrentHashMap&lt;String, SubscriptionGroupConfig&gt; getSubscriptionGroupTable() {
+<span class="fc" id="L173">        return subscriptionGroupTable;</span>
+    }
+
+    public DataVersion getDataVersion() {
+<span class="fc" id="L177">        return dataVersion;</span>
+    }
+
+    public void deleteSubscriptionGroupConfig(final String groupName) {
+<span class="nc" id="L181">        SubscriptionGroupConfig old = this.subscriptionGroupTable.remove(groupName);</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (old != null) {</span>
+<span class="nc" id="L183">            log.info(&quot;delete subscription group OK, subscription group:{}&quot;, old);</span>
+<span class="nc" id="L184">            this.dataVersion.nextVersion();</span>
+<span class="nc" id="L185">            this.persist();</span>
+        } else {
+<span class="nc" id="L187">            log.warn(&quot;delete subscription group failed, subscription groupName: {} not exist&quot;, groupName);</span>
+        }
+<span class="nc" id="L189">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

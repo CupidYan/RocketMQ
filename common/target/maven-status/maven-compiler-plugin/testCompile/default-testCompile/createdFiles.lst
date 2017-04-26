@@ -1,0 +1,8 @@
+org/apache/rocketmq/common/protocol/ConsumeStatusTest.class
+org/apache/rocketmq/common/BrokerConfigTest.class
+org/apache/rocketmq/common/filter/FilterAPITest.class
+org/apache/rocketmq/common/RemotingUtilTest.class
+org/apache/rocketmq/common/UtilAllTest$DemoConfig.class
+org/apache/rocketmq/common/UtilAllTest.class
+org/apache/rocketmq/common/MixAllTest.class
+org/apache/rocketmq/common/DataVersionTest.class

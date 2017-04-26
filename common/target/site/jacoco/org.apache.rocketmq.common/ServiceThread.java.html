@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServiceThread.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common</a> &gt; <span class="el_source">ServiceThread.java</span></div><h1>ServiceThread.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.common;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public abstract class ServiceThread implements Runnable {
+<span class="nc" id="L26">    private static final Logger STLOG = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);</span>
+    private static final long JOIN_TIME = 90 * 1000;
+
+    protected final Thread thread;
+<span class="nc" id="L30">    protected final CountDownLatch2 waitPoint = new CountDownLatch2(1);</span>
+<span class="nc" id="L31">    protected volatile AtomicBoolean hasNotified = new AtomicBoolean(false);</span>
+<span class="nc" id="L32">    protected volatile boolean stopped = false;</span>
+
+<span class="nc" id="L34">    public ServiceThread() {</span>
+<span class="nc" id="L35">        this.thread = new Thread(this, this.getServiceName());</span>
+<span class="nc" id="L36">    }</span>
+
+    public abstract String getServiceName();
+
+    public void start() {
+<span class="nc" id="L41">        this.thread.start();</span>
+<span class="nc" id="L42">    }</span>
+
+    public void shutdown() {
+<span class="nc" id="L45">        this.shutdown(false);</span>
+<span class="nc" id="L46">    }</span>
+
+    public void shutdown(final boolean interrupt) {
+<span class="nc" id="L49">        this.stopped = true;</span>
+<span class="nc" id="L50">        STLOG.info(&quot;shutdown thread &quot; + this.getServiceName() + &quot; interrupt &quot; + interrupt);</span>
+
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (hasNotified.compareAndSet(false, true)) {</span>
+<span class="nc" id="L53">            waitPoint.countDown(); // notify</span>
+        }
+
+        try {
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (interrupt) {</span>
+<span class="nc" id="L58">                this.thread.interrupt();</span>
+            }
+
+<span class="nc" id="L61">            long beginTime = System.currentTimeMillis();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (!this.thread.isDaemon()) {</span>
+<span class="nc" id="L63">                this.thread.join(this.getJointime());</span>
+            }
+<span class="nc" id="L65">            long eclipseTime = System.currentTimeMillis() - beginTime;</span>
+<span class="nc" id="L66">            STLOG.info(&quot;join thread &quot; + this.getServiceName() + &quot; eclipse time(ms) &quot; + eclipseTime + &quot; &quot;</span>
+<span class="nc" id="L67">                + this.getJointime());</span>
+<span class="nc" id="L68">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L69">            e.printStackTrace();</span>
+<span class="nc" id="L70">        }</span>
+<span class="nc" id="L71">    }</span>
+
+    public long getJointime() {
+<span class="nc" id="L74">        return JOIN_TIME;</span>
+    }
+
+    public void stop() {
+<span class="nc" id="L78">        this.stop(false);</span>
+<span class="nc" id="L79">    }</span>
+
+    public void stop(final boolean interrupt) {
+<span class="nc" id="L82">        this.stopped = true;</span>
+<span class="nc" id="L83">        STLOG.info(&quot;stop thread &quot; + this.getServiceName() + &quot; interrupt &quot; + interrupt);</span>
+
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (hasNotified.compareAndSet(false, true)) {</span>
+<span class="nc" id="L86">            waitPoint.countDown(); // notify</span>
+        }
+
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (interrupt) {</span>
+<span class="nc" id="L90">            this.thread.interrupt();</span>
+        }
+<span class="nc" id="L92">    }</span>
+
+    public void makeStop() {
+<span class="nc" id="L95">        this.stopped = true;</span>
+<span class="nc" id="L96">        STLOG.info(&quot;makestop thread &quot; + this.getServiceName());</span>
+<span class="nc" id="L97">    }</span>
+
+    public void wakeup() {
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (hasNotified.compareAndSet(false, true)) {</span>
+<span class="nc" id="L101">            waitPoint.countDown(); // notify</span>
+        }
+<span class="nc" id="L103">    }</span>
+
+    protected void waitForRunning(long interval) {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (hasNotified.compareAndSet(true, false)) {</span>
+<span class="nc" id="L107">            this.onWaitEnd();</span>
+<span class="nc" id="L108">            return;</span>
+        }
+
+        //entry to wait
+<span class="nc" id="L112">        waitPoint.reset();</span>
+
+        try {
+<span class="nc" id="L115">            waitPoint.await(interval, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L116">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L117">            e.printStackTrace();</span>
+        } finally {
+<span class="nc" id="L119">            hasNotified.set(false);</span>
+<span class="nc" id="L120">            this.onWaitEnd();</span>
+<span class="nc" id="L121">        }</span>
+<span class="nc" id="L122">    }</span>
+
+    protected void onWaitEnd() {
+<span class="nc" id="L125">    }</span>
+
+    public boolean isStopped() {
+<span class="nc" id="L128">        return stopped;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

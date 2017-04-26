@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MessageClientIDSetter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.message</a> &gt; <span class="el_source">MessageClientIDSetter.java</span></div><h1>MessageClientIDSetter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.common.message;
+
+import java.nio.ByteBuffer;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.rocketmq.common.UtilAll;
+
+<span class="nc" id="L25">public class MessageClientIDSetter {</span>
+    private static final String TOPIC_KEY_SPLITTER = &quot;#&quot;;
+    private static final int LEN;
+    private static final String FIX_STRING;
+    private static final AtomicInteger COUNTER;
+    private static long startTime;
+    private static long nextStartTime;
+
+    static {
+<span class="nc" id="L34">        LEN = 4 + 2 + 4 + 4 + 2;</span>
+<span class="nc" id="L35">        ByteBuffer tempBuffer = ByteBuffer.allocate(10);</span>
+<span class="nc" id="L36">        tempBuffer.position(2);</span>
+<span class="nc" id="L37">        tempBuffer.putInt(UtilAll.getPid());</span>
+<span class="nc" id="L38">        tempBuffer.position(0);</span>
+        try {
+<span class="nc" id="L40">            tempBuffer.put(UtilAll.getIP());</span>
+<span class="nc" id="L41">        } catch (Exception e) {</span>
+<span class="nc" id="L42">            tempBuffer.put(createFakeIP());</span>
+<span class="nc" id="L43">        }</span>
+<span class="nc" id="L44">        tempBuffer.position(6);</span>
+<span class="nc" id="L45">        tempBuffer.putInt(MessageClientIDSetter.class.getClassLoader().hashCode()); //4</span>
+<span class="nc" id="L46">        FIX_STRING = UtilAll.bytes2string(tempBuffer.array());</span>
+<span class="nc" id="L47">        setStartTime(System.currentTimeMillis());</span>
+<span class="nc" id="L48">        COUNTER = new AtomicInteger(0);</span>
+<span class="nc" id="L49">    }</span>
+
+    private synchronized static void setStartTime(long millis) {
+<span class="nc" id="L52">        Calendar cal = Calendar.getInstance();</span>
+<span class="nc" id="L53">        cal.setTimeInMillis(millis);</span>
+<span class="nc" id="L54">        cal.set(Calendar.DAY_OF_MONTH, 1);</span>
+<span class="nc" id="L55">        cal.set(Calendar.HOUR, 0);</span>
+<span class="nc" id="L56">        cal.set(Calendar.MINUTE, 0);</span>
+<span class="nc" id="L57">        cal.set(Calendar.SECOND, 0);</span>
+<span class="nc" id="L58">        cal.set(Calendar.MILLISECOND, 0);</span>
+<span class="nc" id="L59">        startTime = cal.getTimeInMillis();</span>
+<span class="nc" id="L60">        cal.add(Calendar.MONTH, 1);</span>
+<span class="nc" id="L61">        nextStartTime = cal.getTimeInMillis();</span>
+<span class="nc" id="L62">    }</span>
+
+    public static Date getNearlyTimeFromID(String msgID) {
+<span class="nc" id="L65">        ByteBuffer buf = ByteBuffer.allocate(8);</span>
+<span class="nc" id="L66">        byte[] bytes = UtilAll.string2bytes(msgID);</span>
+<span class="nc" id="L67">        buf.put((byte) 0);</span>
+<span class="nc" id="L68">        buf.put((byte) 0);</span>
+<span class="nc" id="L69">        buf.put((byte) 0);</span>
+<span class="nc" id="L70">        buf.put((byte) 0);</span>
+<span class="nc" id="L71">        buf.put(bytes, 10, 4);</span>
+<span class="nc" id="L72">        buf.position(0);</span>
+<span class="nc" id="L73">        long spanMS = buf.getLong();</span>
+<span class="nc" id="L74">        Calendar cal = Calendar.getInstance();</span>
+<span class="nc" id="L75">        long now = cal.getTimeInMillis();</span>
+<span class="nc" id="L76">        cal.set(Calendar.DAY_OF_MONTH, 1);</span>
+<span class="nc" id="L77">        cal.set(Calendar.HOUR, 0);</span>
+<span class="nc" id="L78">        cal.set(Calendar.MINUTE, 0);</span>
+<span class="nc" id="L79">        cal.set(Calendar.SECOND, 0);</span>
+<span class="nc" id="L80">        cal.set(Calendar.MILLISECOND, 0);</span>
+<span class="nc" id="L81">        long monStartTime = cal.getTimeInMillis();</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (monStartTime + spanMS &gt;= now) {</span>
+<span class="nc" id="L83">            cal.add(Calendar.MONTH, -1);</span>
+<span class="nc" id="L84">            monStartTime = cal.getTimeInMillis();</span>
+        }
+<span class="nc" id="L86">        cal.setTimeInMillis(monStartTime + spanMS);</span>
+<span class="nc" id="L87">        return cal.getTime();</span>
+    }
+
+    public static String getIPStrFromID(String msgID) {
+<span class="nc" id="L91">        byte[] ipBytes = getIPFromID(msgID);</span>
+<span class="nc" id="L92">        return UtilAll.ipToIPv4Str(ipBytes);</span>
+    }
+
+    public static byte[] getIPFromID(String msgID) {
+<span class="nc" id="L96">        byte[] result = new byte[4];</span>
+<span class="nc" id="L97">        byte[] bytes = UtilAll.string2bytes(msgID);</span>
+<span class="nc" id="L98">        System.arraycopy(bytes, 0, result, 0, 4);</span>
+<span class="nc" id="L99">        return result;</span>
+    }
+
+    public static String createUniqID() {
+<span class="nc" id="L103">        StringBuilder sb = new StringBuilder(LEN * 2);</span>
+<span class="nc" id="L104">        sb.append(FIX_STRING);</span>
+<span class="nc" id="L105">        sb.append(UtilAll.bytes2string(createUniqIDBuffer()));</span>
+<span class="nc" id="L106">        return sb.toString();</span>
+    }
+
+    private static byte[] createUniqIDBuffer() {
+<span class="nc" id="L110">        ByteBuffer buffer = ByteBuffer.allocate(4 + 2);</span>
+<span class="nc" id="L111">        long current = System.currentTimeMillis();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (current &gt;= nextStartTime) {</span>
+<span class="nc" id="L113">            setStartTime(current);</span>
+        }
+<span class="nc" id="L115">        buffer.position(0);</span>
+<span class="nc" id="L116">        buffer.putInt((int) (System.currentTimeMillis() - startTime));</span>
+<span class="nc" id="L117">        buffer.putShort((short) COUNTER.getAndIncrement());</span>
+<span class="nc" id="L118">        return buffer.array();</span>
+    }
+
+    public static void setUniqID(final Message msg) {
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (msg.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX) == null) {</span>
+<span class="nc" id="L123">            msg.putProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, createUniqID());</span>
+        }
+<span class="nc" id="L125">    }</span>
+
+    public static String getUniqID(final Message msg) {
+<span class="nc" id="L128">        return msg.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);</span>
+    }
+
+    public static byte[] createFakeIP() {
+<span class="nc" id="L132">        ByteBuffer bb = ByteBuffer.allocate(8);</span>
+<span class="nc" id="L133">        bb.putLong(System.currentTimeMillis());</span>
+<span class="nc" id="L134">        bb.position(4);</span>
+<span class="nc" id="L135">        byte[] fakeIP = new byte[4];</span>
+<span class="nc" id="L136">        bb.get(fakeIP);</span>
+<span class="nc" id="L137">        return fakeIP;</span>
+    }
+}
+    
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

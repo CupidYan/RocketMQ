@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryMessageResult.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">QueryMessageResult.java</span></div><h1>QueryMessageResult.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+
+<span class="nc" id="L23">public class QueryMessageResult {</span>
+
+<span class="nc" id="L25">    private final List&lt;SelectMappedBufferResult&gt; messageMapedList =</span>
+        new ArrayList&lt;SelectMappedBufferResult&gt;(100);
+
+<span class="nc" id="L28">    private final List&lt;ByteBuffer&gt; messageBufferList = new ArrayList&lt;ByteBuffer&gt;(100);</span>
+    private long indexLastUpdateTimestamp;
+    private long indexLastUpdatePhyoffset;
+
+<span class="nc" id="L32">    private int bufferTotalSize = 0;</span>
+
+    public void addMessage(final SelectMappedBufferResult mapedBuffer) {
+<span class="nc" id="L35">        this.messageMapedList.add(mapedBuffer);</span>
+<span class="nc" id="L36">        this.messageBufferList.add(mapedBuffer.getByteBuffer());</span>
+<span class="nc" id="L37">        this.bufferTotalSize += mapedBuffer.getSize();</span>
+<span class="nc" id="L38">    }</span>
+
+    public void release() {
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        for (SelectMappedBufferResult select : this.messageMapedList) {</span>
+<span class="nc" id="L42">            select.release();</span>
+<span class="nc" id="L43">        }</span>
+<span class="nc" id="L44">    }</span>
+
+    public long getIndexLastUpdateTimestamp() {
+<span class="nc" id="L47">        return indexLastUpdateTimestamp;</span>
+    }
+
+    public void setIndexLastUpdateTimestamp(long indexLastUpdateTimestamp) {
+<span class="nc" id="L51">        this.indexLastUpdateTimestamp = indexLastUpdateTimestamp;</span>
+<span class="nc" id="L52">    }</span>
+
+    public long getIndexLastUpdatePhyoffset() {
+<span class="nc" id="L55">        return indexLastUpdatePhyoffset;</span>
+    }
+
+    public void setIndexLastUpdatePhyoffset(long indexLastUpdatePhyoffset) {
+<span class="nc" id="L59">        this.indexLastUpdatePhyoffset = indexLastUpdatePhyoffset;</span>
+<span class="nc" id="L60">    }</span>
+
+    public List&lt;ByteBuffer&gt; getMessageBufferList() {
+<span class="nc" id="L63">        return messageBufferList;</span>
+    }
+
+    public int getBufferTotalSize() {
+<span class="nc" id="L67">        return bufferTotalSize;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

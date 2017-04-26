@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyRemotingServer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-remoting 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.remoting.netty</a> &gt; <span class="el_source">NettyRemotingServer.java</span></div><h1>NettyRemotingServer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.remoting.netty;
+
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import java.net.InetSocketAddress;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.rocketmq.remoting.ChannelEventListener;
+import org.apache.rocketmq.remoting.InvokeCallback;
+import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.RemotingServer;
+import org.apache.rocketmq.remoting.common.Pair;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class NettyRemotingServer extends NettyRemotingAbstract implements RemotingServer {
+<span class="fc" id="L59">    private static final Logger log = LoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);</span>
+    private final ServerBootstrap serverBootstrap;
+    private final EventLoopGroup eventLoopGroupSelector;
+    private final EventLoopGroup eventLoopGroupBoss;
+    private final NettyServerConfig nettyServerConfig;
+
+    private final ExecutorService publicExecutor;
+    private final ChannelEventListener channelEventListener;
+
+<span class="fc" id="L68">    private final Timer timer = new Timer(&quot;ServerHouseKeepingService&quot;, true);</span>
+    private DefaultEventExecutorGroup defaultEventExecutorGroup;
+
+    private RPCHook rpcHook;
+
+<span class="fc" id="L73">    private int port = 0;</span>
+
+    public NettyRemotingServer(final NettyServerConfig nettyServerConfig) {
+<span class="fc" id="L76">        this(nettyServerConfig, null);</span>
+<span class="fc" id="L77">    }</span>
+
+    public NettyRemotingServer(final NettyServerConfig nettyServerConfig, final ChannelEventListener channelEventListener) {
+<span class="fc" id="L80">        super(nettyServerConfig.getServerOnewaySemaphoreValue(), nettyServerConfig.getServerAsyncSemaphoreValue());</span>
+<span class="fc" id="L81">        this.serverBootstrap = new ServerBootstrap();</span>
+<span class="fc" id="L82">        this.nettyServerConfig = nettyServerConfig;</span>
+<span class="fc" id="L83">        this.channelEventListener = channelEventListener;</span>
+
+<span class="fc" id="L85">        int publicThreadNums = nettyServerConfig.getServerCallbackExecutorThreads();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (publicThreadNums &lt;= 0) {</span>
+<span class="fc" id="L87">            publicThreadNums = 4;</span>
+        }
+
+<span class="fc" id="L90">        this.publicExecutor = Executors.newFixedThreadPool(publicThreadNums, new ThreadFactory() {</span>
+<span class="fc" id="L91">            private AtomicInteger threadIndex = new AtomicInteger(0);</span>
+
+            @Override
+            public Thread newThread(Runnable r) {
+<span class="nc" id="L95">                return new Thread(r, &quot;NettyServerPublicExecutor_&quot; + this.threadIndex.incrementAndGet());</span>
+            }
+        });
+
+<span class="fc" id="L99">        this.eventLoopGroupBoss = new NioEventLoopGroup(1, new ThreadFactory() {</span>
+<span class="fc" id="L100">            private AtomicInteger threadIndex = new AtomicInteger(0);</span>
+
+            @Override
+            public Thread newThread(Runnable r) {
+<span class="fc" id="L104">                return new Thread(r, String.format(&quot;NettyBoss_%d&quot;, this.threadIndex.incrementAndGet()));</span>
+            }
+        });
+
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (RemotingUtil.isLinuxPlatform() //</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            &amp;&amp; nettyServerConfig.isUseEpollNativeSelector()) {</span>
+<span class="nc" id="L110">            this.eventLoopGroupSelector = new EpollEventLoopGroup(nettyServerConfig.getServerSelectorThreads(), new ThreadFactory() {</span>
+<span class="nc" id="L111">                private AtomicInteger threadIndex = new AtomicInteger(0);</span>
+<span class="nc" id="L112">                private int threadTotal = nettyServerConfig.getServerSelectorThreads();</span>
+
+                @Override
+                public Thread newThread(Runnable r) {
+<span class="nc" id="L116">                    return new Thread(r, String.format(&quot;NettyServerEPOLLSelector_%d_%d&quot;, threadTotal, this.threadIndex.incrementAndGet()));</span>
+                }
+            });
+        } else {
+<span class="fc" id="L120">            this.eventLoopGroupSelector = new NioEventLoopGroup(nettyServerConfig.getServerSelectorThreads(), new ThreadFactory() {</span>
+<span class="fc" id="L121">                private AtomicInteger threadIndex = new AtomicInteger(0);</span>
+<span class="fc" id="L122">                private int threadTotal = nettyServerConfig.getServerSelectorThreads();</span>
+
+                @Override
+                public Thread newThread(Runnable r) {
+<span class="fc" id="L126">                    return new Thread(r, String.format(&quot;NettyServerNIOSelector_%d_%d&quot;, threadTotal, this.threadIndex.incrementAndGet()));</span>
+                }
+            });
+        }
+<span class="fc" id="L130">    }</span>
+
+    @Override
+    public void start() {
+<span class="fc" id="L134">        this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(</span>
+<span class="fc" id="L135">            nettyServerConfig.getServerWorkerThreads(),</span>
+<span class="fc" id="L136">            new ThreadFactory() {</span>
+
+<span class="fc" id="L138">                private AtomicInteger threadIndex = new AtomicInteger(0);</span>
+
+                @Override
+                public Thread newThread(Runnable r) {
+<span class="fc" id="L142">                    return new Thread(r, &quot;NettyServerCodecThread_&quot; + this.threadIndex.incrementAndGet());</span>
+                }
+            });
+
+<span class="fc" id="L146">        ServerBootstrap childHandler =</span>
+<span class="fc" id="L147">            this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector).channel(NioServerSocketChannel.class)</span>
+<span class="fc" id="L148">                .option(ChannelOption.SO_BACKLOG, 1024)</span>
+<span class="fc" id="L149">                .option(ChannelOption.SO_REUSEADDR, true)</span>
+<span class="fc" id="L150">                .option(ChannelOption.SO_KEEPALIVE, false)</span>
+<span class="fc" id="L151">                .childOption(ChannelOption.TCP_NODELAY, true)</span>
+<span class="fc" id="L152">                .option(ChannelOption.SO_SNDBUF, nettyServerConfig.getServerSocketSndBufSize())</span>
+<span class="fc" id="L153">                .option(ChannelOption.SO_RCVBUF, nettyServerConfig.getServerSocketRcvBufSize())</span>
+<span class="fc" id="L154">                .localAddress(new InetSocketAddress(this.nettyServerConfig.getListenPort()))</span>
+<span class="fc" id="L155">                .childHandler(new ChannelInitializer&lt;SocketChannel&gt;() {</span>
+                    @Override
+                    public void initChannel(SocketChannel ch) throws Exception {
+<span class="fc" id="L158">                        ch.pipeline().addLast(</span>
+<span class="fc" id="L159">                            defaultEventExecutorGroup,</span>
+                            new NettyEncoder(),
+                            new NettyDecoder(),
+<span class="fc" id="L162">                            new IdleStateHandler(0, 0, nettyServerConfig.getServerChannelMaxIdleTimeSeconds()),</span>
+                            new NettyConnetManageHandler(),
+                            new NettyServerHandler());
+<span class="fc" id="L165">                    }</span>
+                });
+
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (nettyServerConfig.isServerPooledByteBufAllocatorEnable()) {</span>
+<span class="fc" id="L169">            childHandler.childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);</span>
+        }
+
+        try {
+<span class="fc" id="L173">            ChannelFuture sync = this.serverBootstrap.bind().sync();</span>
+<span class="fc" id="L174">            InetSocketAddress addr = (InetSocketAddress) sync.channel().localAddress();</span>
+<span class="fc" id="L175">            this.port = addr.getPort();</span>
+<span class="nc" id="L176">        } catch (InterruptedException e1) {</span>
+<span class="nc" id="L177">            throw new RuntimeException(&quot;this.serverBootstrap.bind().sync() InterruptedException&quot;, e1);</span>
+<span class="fc" id="L178">        }</span>
+
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        if (this.channelEventListener != null) {</span>
+<span class="nc" id="L181">            this.nettyEventExecuter.start();</span>
+        }
+
+<span class="fc" id="L184">        this.timer.scheduleAtFixedRate(new TimerTask() {</span>
+
+            @Override
+            public void run() {
+                try {
+<span class="fc" id="L189">                    NettyRemotingServer.this.scanResponseTable();</span>
+<span class="nc" id="L190">                } catch (Exception e) {</span>
+<span class="nc" id="L191">                    log.error(&quot;scanResponseTable exception&quot;, e);</span>
+<span class="fc" id="L192">                }</span>
+<span class="fc" id="L193">            }</span>
+        }, 1000 * 3, 1000);
+<span class="fc" id="L195">    }</span>
+
+    @Override
+    public void shutdown() {
+        try {
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">            if (this.timer != null) {</span>
+<span class="fc" id="L201">                this.timer.cancel();</span>
+            }
+
+<span class="fc" id="L204">            this.eventLoopGroupBoss.shutdownGracefully();</span>
+
+<span class="fc" id="L206">            this.eventLoopGroupSelector.shutdownGracefully();</span>
+
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">            if (this.nettyEventExecuter != null) {</span>
+<span class="fc" id="L209">                this.nettyEventExecuter.shutdown();</span>
+            }
+
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">            if (this.defaultEventExecutorGroup != null) {</span>
+<span class="fc" id="L213">                this.defaultEventExecutorGroup.shutdownGracefully();</span>
+            }
+<span class="nc" id="L215">        } catch (Exception e) {</span>
+<span class="nc" id="L216">            log.error(&quot;NettyRemotingServer shutdown exception, &quot;, e);</span>
+<span class="fc" id="L217">        }</span>
+
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (this.publicExecutor != null) {</span>
+            try {
+<span class="fc" id="L221">                this.publicExecutor.shutdown();</span>
+<span class="nc" id="L222">            } catch (Exception e) {</span>
+<span class="nc" id="L223">                log.error(&quot;NettyRemotingServer shutdown exception, &quot;, e);</span>
+<span class="fc" id="L224">            }</span>
+        }
+<span class="fc" id="L226">    }</span>
+
+    @Override
+    public void registerRPCHook(RPCHook rpcHook) {
+<span class="nc" id="L230">        this.rpcHook = rpcHook;</span>
+<span class="nc" id="L231">    }</span>
+
+    @Override
+    public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
+<span class="fc" id="L235">        ExecutorService executorThis = executor;</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (null == executor) {</span>
+<span class="nc" id="L237">            executorThis = this.publicExecutor;</span>
+        }
+
+<span class="fc" id="L240">        Pair&lt;NettyRequestProcessor, ExecutorService&gt; pair = new Pair&lt;NettyRequestProcessor, ExecutorService&gt;(processor, executorThis);</span>
+<span class="fc" id="L241">        this.processorTable.put(requestCode, pair);</span>
+<span class="fc" id="L242">    }</span>
+
+    @Override
+    public void registerDefaultProcessor(NettyRequestProcessor processor, ExecutorService executor) {
+<span class="nc" id="L246">        this.defaultRequestProcessor = new Pair&lt;NettyRequestProcessor, ExecutorService&gt;(processor, executor);</span>
+<span class="nc" id="L247">    }</span>
+
+    @Override
+    public int localListenPort() {
+<span class="nc" id="L251">        return this.port;</span>
+    }
+
+    @Override
+    public Pair&lt;NettyRequestProcessor, ExecutorService&gt; getProcessorPair(int requestCode) {
+<span class="nc" id="L256">        return processorTable.get(requestCode);</span>
+    }
+
+    @Override
+    public RemotingCommand invokeSync(final Channel channel, final RemotingCommand request, final long timeoutMillis)
+        throws InterruptedException, RemotingSendRequestException, RemotingTimeoutException {
+<span class="nc" id="L262">        return this.invokeSyncImpl(channel, request, timeoutMillis);</span>
+    }
+
+    @Override
+    public void invokeAsync(Channel channel, RemotingCommand request, long timeoutMillis, InvokeCallback invokeCallback)
+        throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+<span class="nc" id="L268">        this.invokeAsyncImpl(channel, request, timeoutMillis, invokeCallback);</span>
+<span class="nc" id="L269">    }</span>
+
+    @Override
+    public void invokeOneway(Channel channel, RemotingCommand request, long timeoutMillis) throws InterruptedException,
+        RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+<span class="nc" id="L274">        this.invokeOnewayImpl(channel, request, timeoutMillis);</span>
+<span class="nc" id="L275">    }</span>
+
+    @Override
+    public ChannelEventListener getChannelEventListener() {
+<span class="nc" id="L279">        return channelEventListener;</span>
+    }
+
+    @Override
+    public RPCHook getRPCHook() {
+<span class="fc" id="L284">        return this.rpcHook;</span>
+    }
+
+    @Override
+    public ExecutorService getCallbackExecutor() {
+<span class="nc" id="L289">        return this.publicExecutor;</span>
+    }
+
+<span class="fc" id="L292">    class NettyServerHandler extends SimpleChannelInboundHandler&lt;RemotingCommand&gt; {</span>
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, RemotingCommand msg) throws Exception {
+<span class="fc" id="L296">            processMessageReceived(ctx, msg);</span>
+<span class="fc" id="L297">        }</span>
+    }
+
+<span class="fc" id="L300">    class NettyConnetManageHandler extends ChannelDuplexHandler {</span>
+        @Override
+        public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+<span class="fc" id="L303">            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());</span>
+<span class="fc" id="L304">            log.info(&quot;NETTY SERVER PIPELINE: channelRegistered {}&quot;, remoteAddress);</span>
+<span class="fc" id="L305">            super.channelRegistered(ctx);</span>
+<span class="fc" id="L306">        }</span>
+
+        @Override
+        public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+<span class="fc" id="L310">            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());</span>
+<span class="fc" id="L311">            log.info(&quot;NETTY SERVER PIPELINE: channelUnregistered, the channel[{}]&quot;, remoteAddress);</span>
+<span class="fc" id="L312">            super.channelUnregistered(ctx);</span>
+<span class="fc" id="L313">        }</span>
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+<span class="fc" id="L317">            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());</span>
+<span class="fc" id="L318">            log.info(&quot;NETTY SERVER PIPELINE: channelActive, the channel[{}]&quot;, remoteAddress);</span>
+<span class="fc" id="L319">            super.channelActive(ctx);</span>
+
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">            if (NettyRemotingServer.this.channelEventListener != null) {</span>
+<span class="nc" id="L322">                NettyRemotingServer.this.putNettyEvent(new NettyEvent(NettyEventType.CONNECT, remoteAddress.toString(), ctx.channel()));</span>
+            }
+<span class="fc" id="L324">        }</span>
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+<span class="fc" id="L328">            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());</span>
+<span class="fc" id="L329">            log.info(&quot;NETTY SERVER PIPELINE: channelInactive, the channel[{}]&quot;, remoteAddress);</span>
+<span class="fc" id="L330">            super.channelInactive(ctx);</span>
+
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">            if (NettyRemotingServer.this.channelEventListener != null) {</span>
+<span class="nc" id="L333">                NettyRemotingServer.this.putNettyEvent(new NettyEvent(NettyEventType.CLOSE, remoteAddress.toString(), ctx.channel()));</span>
+            }
+<span class="fc" id="L335">        }</span>
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if (evt instanceof IdleStateEvent) {</span>
+<span class="nc" id="L340">                IdleStateEvent evnet = (IdleStateEvent) evt;</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">                if (evnet.state().equals(IdleState.ALL_IDLE)) {</span>
+<span class="nc" id="L342">                    final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());</span>
+<span class="nc" id="L343">                    log.warn(&quot;NETTY SERVER PIPELINE: IDLE exception [{}]&quot;, remoteAddress);</span>
+<span class="nc" id="L344">                    RemotingUtil.closeChannel(ctx.channel());</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                    if (NettyRemotingServer.this.channelEventListener != null) {</span>
+<span class="nc" id="L346">                        NettyRemotingServer.this</span>
+<span class="nc" id="L347">                            .putNettyEvent(new NettyEvent(NettyEventType.IDLE, remoteAddress.toString(), ctx.channel()));</span>
+                    }
+                }
+            }
+
+<span class="nc" id="L352">            ctx.fireUserEventTriggered(evt);</span>
+<span class="nc" id="L353">        }</span>
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+<span class="nc" id="L357">            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());</span>
+<span class="nc" id="L358">            log.warn(&quot;NETTY SERVER PIPELINE: exceptionCaught {}&quot;, remoteAddress);</span>
+<span class="nc" id="L359">            log.warn(&quot;NETTY SERVER PIPELINE: exceptionCaught exception.&quot;, cause);</span>
+
+<span class="nc bnc" id="L361" title="All 2 branches missed.">            if (NettyRemotingServer.this.channelEventListener != null) {</span>
+<span class="nc" id="L362">                NettyRemotingServer.this.putNettyEvent(new NettyEvent(NettyEventType.EXCEPTION, remoteAddress.toString(), ctx.channel()));</span>
+            }
+
+<span class="nc" id="L365">            RemotingUtil.closeChannel(ctx.channel());</span>
+<span class="nc" id="L366">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

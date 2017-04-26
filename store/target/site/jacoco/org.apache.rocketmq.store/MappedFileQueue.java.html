@@ -1,0 +1,596 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MappedFileQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">MappedFileQueue.java</span></div><h1>MappedFileQueue.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class MappedFileQueue {
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+<span class="fc" id="L34">    private static final Logger LOG_ERROR = LoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);</span>
+
+    private static final int DELETE_FILES_BATCH_MAX = 10;
+
+    private final String storePath;
+
+    private final int mappedFileSize;
+
+<span class="fc" id="L42">    private final CopyOnWriteArrayList&lt;MappedFile&gt; mappedFiles = new CopyOnWriteArrayList&lt;MappedFile&gt;();</span>
+
+    private final AllocateMappedFileService allocateMappedFileService;
+
+<span class="fc" id="L46">    private long flushedWhere = 0;</span>
+<span class="fc" id="L47">    private long committedWhere = 0;</span>
+
+<span class="fc" id="L49">    private volatile long storeTimestamp = 0;</span>
+
+    public MappedFileQueue(final String storePath, int mappedFileSize,
+<span class="fc" id="L52">        AllocateMappedFileService allocateMappedFileService) {</span>
+<span class="fc" id="L53">        this.storePath = storePath;</span>
+<span class="fc" id="L54">        this.mappedFileSize = mappedFileSize;</span>
+<span class="fc" id="L55">        this.allocateMappedFileService = allocateMappedFileService;</span>
+<span class="fc" id="L56">    }</span>
+
+    public void checkSelf() {
+
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (!this.mappedFiles.isEmpty()) {</span>
+<span class="nc" id="L61">            Iterator&lt;MappedFile&gt; iterator = mappedFiles.iterator();</span>
+<span class="nc" id="L62">            MappedFile pre = null;</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            while (iterator.hasNext()) {</span>
+<span class="nc" id="L64">                MappedFile cur = iterator.next();</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">                if (pre != null) {</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">                    if (cur.getFileFromOffset() - pre.getFileFromOffset() != this.mappedFileSize) {</span>
+<span class="nc" id="L68">                        LOG_ERROR.error(&quot;[BUG]The mappedFile queue's data is damaged, the adjacent mappedFile's offset don't match. pre file {}, cur file {}&quot;,</span>
+<span class="nc" id="L69">                            pre.getFileName(), cur.getFileName());</span>
+                    }
+                }
+<span class="nc" id="L72">                pre = cur;</span>
+<span class="nc" id="L73">            }</span>
+        }
+<span class="nc" id="L75">    }</span>
+
+    public MappedFile getMappedFileByTime(final long timestamp) {
+<span class="nc" id="L78">        Object[] mfs = this.copyMappedFiles(0);</span>
+
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if (null == mfs)</span>
+<span class="nc" id="L81">            return null;</span>
+
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        for (int i = 0; i &lt; mfs.length; i++) {</span>
+<span class="nc" id="L84">            MappedFile mappedFile = (MappedFile) mfs[i];</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            if (mappedFile.getLastModifiedTimestamp() &gt;= timestamp) {</span>
+<span class="nc" id="L86">                return mappedFile;</span>
+            }
+        }
+
+<span class="nc" id="L90">        return (MappedFile) mfs[mfs.length - 1];</span>
+    }
+
+    private Object[] copyMappedFiles(final int reservedMappedFiles) {
+        Object[] mfs;
+
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (this.mappedFiles.size() &lt;= reservedMappedFiles) {</span>
+<span class="nc" id="L97">            return null;</span>
+        }
+
+<span class="fc" id="L100">        mfs = this.mappedFiles.toArray();</span>
+<span class="fc" id="L101">        return mfs;</span>
+    }
+
+    public void truncateDirtyFiles(long offset) {
+<span class="nc" id="L105">        List&lt;MappedFile&gt; willRemoveFiles = new ArrayList&lt;MappedFile&gt;();</span>
+
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (MappedFile file : this.mappedFiles) {</span>
+<span class="nc" id="L108">            long fileTailOffset = file.getFileFromOffset() + this.mappedFileSize;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            if (fileTailOffset &gt; offset) {</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (offset &gt;= file.getFileFromOffset()) {</span>
+<span class="nc" id="L111">                    file.setWrotePosition((int) (offset % this.mappedFileSize));</span>
+<span class="nc" id="L112">                    file.setCommittedPosition((int) (offset % this.mappedFileSize));</span>
+<span class="nc" id="L113">                    file.setFlushedPosition((int) (offset % this.mappedFileSize));</span>
+                } else {
+<span class="nc" id="L115">                    file.destroy(1000);</span>
+<span class="nc" id="L116">                    willRemoveFiles.add(file);</span>
+                }
+            }
+<span class="nc" id="L119">        }</span>
+
+<span class="nc" id="L121">        this.deleteExpiredFile(willRemoveFiles);</span>
+<span class="nc" id="L122">    }</span>
+
+    private void deleteExpiredFile(List&lt;MappedFile&gt; files) {
+
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (!files.isEmpty()) {</span>
+
+<span class="fc" id="L128">            Iterator&lt;MappedFile&gt; iterator = files.iterator();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            while (iterator.hasNext()) {</span>
+<span class="fc" id="L130">                MappedFile cur = iterator.next();</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (!this.mappedFiles.contains(cur)) {</span>
+<span class="nc" id="L132">                    iterator.remove();</span>
+<span class="nc" id="L133">                    log.info(&quot;This mappedFile {} is not contained by mappedFiles, so skip it.&quot;, cur.getFileName());</span>
+                }
+<span class="fc" id="L135">            }</span>
+
+            try {
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                if (!this.mappedFiles.removeAll(files)) {</span>
+<span class="nc" id="L139">                    log.error(&quot;deleteExpiredFile remove failed.&quot;);</span>
+                }
+<span class="nc" id="L141">            } catch (Exception e) {</span>
+<span class="nc" id="L142">                log.error(&quot;deleteExpiredFile has exception.&quot;, e);</span>
+<span class="fc" id="L143">            }</span>
+        }
+<span class="fc" id="L145">    }</span>
+
+    public boolean load() {
+<span class="fc" id="L148">        File dir = new File(this.storePath);</span>
+<span class="fc" id="L149">        File[] files = dir.listFiles();</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (files != null) {</span>
+            // ascending order
+<span class="nc" id="L152">            Arrays.sort(files);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            for (File file : files) {</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                if (file.length() != this.mappedFileSize) {</span>
+<span class="nc" id="L156">                    log.warn(file + &quot;\t&quot; + file.length()</span>
+                        + &quot; length not matched message store config value, ignore it&quot;);
+<span class="nc" id="L158">                    return true;</span>
+                }
+
+                try {
+<span class="nc" id="L162">                    MappedFile mappedFile = new MappedFile(file.getPath(), mappedFileSize);</span>
+
+<span class="nc" id="L164">                    mappedFile.setWrotePosition(this.mappedFileSize);</span>
+<span class="nc" id="L165">                    mappedFile.setFlushedPosition(this.mappedFileSize);</span>
+<span class="nc" id="L166">                    mappedFile.setCommittedPosition(this.mappedFileSize);</span>
+<span class="nc" id="L167">                    this.mappedFiles.add(mappedFile);</span>
+<span class="nc" id="L168">                    log.info(&quot;load &quot; + file.getPath() + &quot; OK&quot;);</span>
+<span class="nc" id="L169">                } catch (IOException e) {</span>
+<span class="nc" id="L170">                    log.error(&quot;load file &quot; + file + &quot; error&quot;, e);</span>
+<span class="nc" id="L171">                    return false;</span>
+<span class="nc" id="L172">                }</span>
+            }
+        }
+
+<span class="fc" id="L176">        return true;</span>
+    }
+
+    public long howMuchFallBehind() {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (this.mappedFiles.isEmpty())</span>
+<span class="nc" id="L181">            return 0;</span>
+
+<span class="nc" id="L183">        long committed = this.flushedWhere;</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (committed != 0) {</span>
+<span class="nc" id="L185">            MappedFile mappedFile = this.getLastMappedFile(0, false);</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            if (mappedFile != null) {</span>
+<span class="nc" id="L187">                return (mappedFile.getFileFromOffset() + mappedFile.getWrotePosition()) - committed;</span>
+            }
+        }
+
+<span class="nc" id="L191">        return 0;</span>
+    }
+
+    public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
+<span class="fc" id="L195">        long createOffset = -1;</span>
+<span class="fc" id="L196">        MappedFile mappedFileLast = getLastMappedFile();</span>
+
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (mappedFileLast == null) {</span>
+<span class="fc" id="L199">            createOffset = startOffset - (startOffset % this.mappedFileSize);</span>
+        }
+
+<span class="fc bfc" id="L202" title="All 4 branches covered.">        if (mappedFileLast != null &amp;&amp; mappedFileLast.isFull()) {</span>
+<span class="fc" id="L203">            createOffset = mappedFileLast.getFileFromOffset() + this.mappedFileSize;</span>
+        }
+
+<span class="pc bpc" id="L206" title="1 of 4 branches missed.">        if (createOffset != -1 &amp;&amp; needCreate) {</span>
+<span class="fc" id="L207">            String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);</span>
+<span class="fc" id="L208">            String nextNextFilePath = this.storePath + File.separator</span>
+<span class="fc" id="L209">                + UtilAll.offset2FileName(createOffset + this.mappedFileSize);</span>
+<span class="fc" id="L210">            MappedFile mappedFile = null;</span>
+
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (this.allocateMappedFileService != null) {</span>
+<span class="fc" id="L213">                mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,</span>
+                    nextNextFilePath, this.mappedFileSize);
+            } else {
+                try {
+<span class="fc" id="L217">                    mappedFile = new MappedFile(nextFilePath, this.mappedFileSize);</span>
+<span class="nc" id="L218">                } catch (IOException e) {</span>
+<span class="nc" id="L219">                    log.error(&quot;create mappedFile exception&quot;, e);</span>
+<span class="fc" id="L220">                }</span>
+            }
+
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (mappedFile != null) {</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                if (this.mappedFiles.isEmpty()) {</span>
+<span class="fc" id="L225">                    mappedFile.setFirstCreateInQueue(true);</span>
+                }
+<span class="fc" id="L227">                this.mappedFiles.add(mappedFile);</span>
+            }
+
+<span class="fc" id="L230">            return mappedFile;</span>
+        }
+
+<span class="fc" id="L233">        return mappedFileLast;</span>
+    }
+
+    public MappedFile getLastMappedFile(final long startOffset) {
+<span class="fc" id="L237">        return getLastMappedFile(startOffset, true);</span>
+    }
+
+    public MappedFile getLastMappedFile() {
+<span class="fc" id="L241">        MappedFile mappedFileLast = null;</span>
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        while (!this.mappedFiles.isEmpty()) {</span>
+            try {
+<span class="fc" id="L245">                mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);</span>
+<span class="fc" id="L246">                break;</span>
+<span class="nc" id="L247">            } catch (IndexOutOfBoundsException e) {</span>
+                //continue;
+<span class="nc" id="L249">            } catch (Exception e) {</span>
+<span class="nc" id="L250">                log.error(&quot;getLastMappedFile has exception.&quot;, e);</span>
+<span class="nc" id="L251">                break;</span>
+<span class="nc" id="L252">            }</span>
+        }
+
+<span class="fc" id="L255">        return mappedFileLast;</span>
+    }
+
+    public boolean resetOffset(long offset) {
+<span class="nc" id="L259">        MappedFile mappedFileLast = getLastMappedFile();</span>
+
+<span class="nc bnc" id="L261" title="All 2 branches missed.">        if (mappedFileLast != null) {</span>
+<span class="nc" id="L262">            long lastOffset = mappedFileLast.getFileFromOffset() +</span>
+<span class="nc" id="L263">                mappedFileLast.getWrotePosition();</span>
+<span class="nc" id="L264">            long diff = lastOffset - offset;</span>
+
+<span class="nc" id="L266">            final int maxDiff = this.mappedFileSize * 2;</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            if (diff &gt; maxDiff)</span>
+<span class="nc" id="L268">                return false;</span>
+        }
+
+<span class="nc" id="L271">        ListIterator&lt;MappedFile&gt; iterator = this.mappedFiles.listIterator();</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        while (iterator.hasPrevious()) {</span>
+<span class="nc" id="L274">            mappedFileLast = iterator.previous();</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (offset &gt;= mappedFileLast.getFileFromOffset()) {</span>
+<span class="nc" id="L276">                int where = (int) (offset % mappedFileLast.getFileSize());</span>
+<span class="nc" id="L277">                mappedFileLast.setFlushedPosition(where);</span>
+<span class="nc" id="L278">                mappedFileLast.setWrotePosition(where);</span>
+<span class="nc" id="L279">                mappedFileLast.setCommittedPosition(where);</span>
+<span class="nc" id="L280">                break;</span>
+            } else {
+<span class="nc" id="L282">                iterator.remove();</span>
+            }
+        }
+<span class="nc" id="L285">        return true;</span>
+    }
+
+    public long getMinOffset() {
+
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        if (!this.mappedFiles.isEmpty()) {</span>
+            try {
+<span class="nc" id="L292">                return this.mappedFiles.get(0).getFileFromOffset();</span>
+<span class="nc" id="L293">            } catch (IndexOutOfBoundsException e) {</span>
+                //continue;
+<span class="nc" id="L295">            } catch (Exception e) {</span>
+<span class="nc" id="L296">                log.error(&quot;getMinOffset has exception.&quot;, e);</span>
+<span class="nc" id="L297">            }</span>
+        }
+<span class="nc" id="L299">        return -1;</span>
+    }
+
+    public long getMaxOffset() {
+<span class="fc" id="L303">        MappedFile mappedFile = getLastMappedFile();</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (mappedFile != null) {</span>
+<span class="fc" id="L305">            return mappedFile.getFileFromOffset() + mappedFile.getReadPosition();</span>
+        }
+<span class="fc" id="L307">        return 0;</span>
+    }
+
+    public long getMaxWrotePosition() {
+<span class="nc" id="L311">        MappedFile mappedFile = getLastMappedFile();</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+<span class="nc" id="L313">            return mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();</span>
+        }
+<span class="nc" id="L315">        return 0;</span>
+    }
+
+    public long remainHowManyDataToCommit() {
+<span class="nc" id="L319">        return getMaxWrotePosition() - committedWhere;</span>
+    }
+
+    public long remainHowManyDataToFlush() {
+<span class="nc" id="L323">        return getMaxOffset() - flushedWhere;</span>
+    }
+
+    public void deleteLastMappedFile() {
+<span class="nc" id="L327">        MappedFile lastMappedFile = getLastMappedFile();</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        if (lastMappedFile != null) {</span>
+<span class="nc" id="L329">            lastMappedFile.destroy(1000);</span>
+<span class="nc" id="L330">            this.mappedFiles.remove(lastMappedFile);</span>
+<span class="nc" id="L331">            log.info(&quot;on recover, destroy a logic mapped file &quot; + lastMappedFile.getFileName());</span>
+
+        }
+<span class="nc" id="L334">    }</span>
+
+    public int deleteExpiredFileByTime(final long expiredTime,
+        final int deleteFilesInterval,
+        final long intervalForcibly,
+        final boolean cleanImmediately) {
+<span class="nc" id="L340">        Object[] mfs = this.copyMappedFiles(0);</span>
+
+<span class="nc bnc" id="L342" title="All 2 branches missed.">        if (null == mfs)</span>
+<span class="nc" id="L343">            return 0;</span>
+
+<span class="nc" id="L345">        int mfsLength = mfs.length - 1;</span>
+<span class="nc" id="L346">        int deleteCount = 0;</span>
+<span class="nc" id="L347">        List&lt;MappedFile&gt; files = new ArrayList&lt;MappedFile&gt;();</span>
+<span class="nc bnc" id="L348" title="All 2 branches missed.">        if (null != mfs) {</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">            for (int i = 0; i &lt; mfsLength; i++) {</span>
+<span class="nc" id="L350">                MappedFile mappedFile = (MappedFile) mfs[i];</span>
+<span class="nc" id="L351">                long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;</span>
+<span class="nc bnc" id="L352" title="All 4 branches missed.">                if (System.currentTimeMillis() &gt;= liveMaxTimestamp || cleanImmediately) {</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">                    if (mappedFile.destroy(intervalForcibly)) {</span>
+<span class="nc" id="L354">                        files.add(mappedFile);</span>
+<span class="nc" id="L355">                        deleteCount++;</span>
+
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                        if (files.size() &gt;= DELETE_FILES_BATCH_MAX) {</span>
+<span class="nc" id="L358">                            break;</span>
+                        }
+
+<span class="nc bnc" id="L361" title="All 4 branches missed.">                        if (deleteFilesInterval &gt; 0 &amp;&amp; (i + 1) &lt; mfsLength) {</span>
+                            try {
+<span class="nc" id="L363">                                Thread.sleep(deleteFilesInterval);</span>
+<span class="nc" id="L364">                            } catch (InterruptedException e) {</span>
+<span class="nc" id="L365">                            }</span>
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+<span class="nc" id="L374">        deleteExpiredFile(files);</span>
+
+<span class="nc" id="L376">        return deleteCount;</span>
+    }
+
+    public int deleteExpiredFileByOffset(long offset, int unitSize) {
+<span class="fc" id="L380">        Object[] mfs = this.copyMappedFiles(0);</span>
+
+<span class="fc" id="L382">        List&lt;MappedFile&gt; files = new ArrayList&lt;MappedFile&gt;();</span>
+<span class="fc" id="L383">        int deleteCount = 0;</span>
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">        if (null != mfs) {</span>
+
+<span class="fc" id="L386">            int mfsLength = mfs.length - 1;</span>
+
+<span class="fc bfc" id="L388" title="All 2 branches covered.">            for (int i = 0; i &lt; mfsLength; i++) {</span>
+                boolean destroy;
+<span class="fc" id="L390">                MappedFile mappedFile = (MappedFile) mfs[i];</span>
+<span class="fc" id="L391">                SelectMappedBufferResult result = mappedFile.selectMappedBuffer(this.mappedFileSize - unitSize);</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">                if (result != null) {</span>
+<span class="fc" id="L393">                    long maxOffsetInLogicQueue = result.getByteBuffer().getLong();</span>
+<span class="fc" id="L394">                    result.release();</span>
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">                    destroy = maxOffsetInLogicQueue &lt; offset;</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">                    if (destroy) {</span>
+<span class="fc" id="L397">                        log.info(&quot;physic min offset &quot; + offset + &quot;, logics in current mappedFile max offset &quot;</span>
+                            + maxOffsetInLogicQueue + &quot;, delete it&quot;);
+                    }
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">                } else if (!mappedFile.isAvailable()) { // Handle hanged file.</span>
+<span class="fc" id="L401">                    log.warn(&quot;Found a hanged consume queue file, attempting to delete it.&quot;);</span>
+<span class="fc" id="L402">                    destroy = true;</span>
+                } else {
+<span class="nc" id="L404">                    log.warn(&quot;this being not executed forever.&quot;);</span>
+<span class="nc" id="L405">                    break;</span>
+                }
+
+                // TODO: Externalize this hardcoded value
+<span class="pc bpc" id="L409" title="1 of 4 branches missed.">                if (destroy &amp;&amp; mappedFile.destroy(1000 * 60)) {</span>
+<span class="fc" id="L410">                    files.add(mappedFile);</span>
+<span class="fc" id="L411">                    deleteCount++;</span>
+                } else {
+                    break;
+                }
+            }
+        }
+
+<span class="fc" id="L418">        deleteExpiredFile(files);</span>
+
+<span class="fc" id="L420">        return deleteCount;</span>
+    }
+
+    public boolean flush(final int flushLeastPages) {
+<span class="fc" id="L424">        boolean result = true;</span>
+<span class="fc" id="L425">        MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, false);</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">        if (mappedFile != null) {</span>
+<span class="fc" id="L427">            long tmpTimeStamp = mappedFile.getStoreTimestamp();</span>
+<span class="fc" id="L428">            int offset = mappedFile.flush(flushLeastPages);</span>
+<span class="fc" id="L429">            long where = mappedFile.getFileFromOffset() + offset;</span>
+<span class="fc bfc" id="L430" title="All 2 branches covered.">            result = where == this.flushedWhere;</span>
+<span class="fc" id="L431">            this.flushedWhere = where;</span>
+<span class="fc bfc" id="L432" title="All 2 branches covered.">            if (0 == flushLeastPages) {</span>
+<span class="fc" id="L433">                this.storeTimestamp = tmpTimeStamp;</span>
+            }
+        }
+
+<span class="fc" id="L437">        return result;</span>
+    }
+
+    public boolean commit(final int commitLeastPages) {
+<span class="nc" id="L441">        boolean result = true;</span>
+<span class="nc" id="L442">        MappedFile mappedFile = this.findMappedFileByOffset(this.committedWhere, false);</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+<span class="nc" id="L444">            int offset = mappedFile.commit(commitLeastPages);</span>
+<span class="nc" id="L445">            long where = mappedFile.getFileFromOffset() + offset;</span>
+<span class="nc bnc" id="L446" title="All 2 branches missed.">            result = where == this.committedWhere;</span>
+<span class="nc" id="L447">            this.committedWhere = where;</span>
+        }
+
+<span class="nc" id="L450">        return result;</span>
+    }
+
+    /**
+     * Finds a mapped file by offset.
+     *
+     * @param offset Offset.
+     * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
+     * @return Mapped file or null (when not found and returnFirstOnNotFound is &lt;code&gt;false&lt;/code&gt;).
+     */
+    public MappedFile findMappedFileByOffset(final long offset, final boolean returnFirstOnNotFound) {
+        try {
+<span class="fc" id="L462">            MappedFile mappedFile = this.getFirstMappedFile();</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">            if (mappedFile != null) {</span>
+<span class="fc" id="L464">                int index = (int) ((offset / this.mappedFileSize) - (mappedFile.getFileFromOffset() / this.mappedFileSize));</span>
+<span class="pc bpc" id="L465" title="1 of 4 branches missed.">                if (index &lt; 0 || index &gt;= this.mappedFiles.size()) {</span>
+<span class="fc" id="L466">                    LOG_ERROR.warn(&quot;Offset for {} not matched. Request offset: {}, index: {}, &quot; +</span>
+                            &quot;mappedFileSize: {}, mappedFiles count: {}&quot;,
+                        mappedFile,
+<span class="fc" id="L469">                        offset,</span>
+<span class="fc" id="L470">                        index,</span>
+<span class="fc" id="L471">                        this.mappedFileSize,</span>
+<span class="fc" id="L472">                        this.mappedFiles.size());</span>
+                }
+
+                try {
+<span class="fc" id="L476">                    return this.mappedFiles.get(index);</span>
+<span class="fc" id="L477">                } catch (Exception e) {</span>
+<span class="pc bpc" id="L478" title="1 of 2 branches missed.">                    if (returnFirstOnNotFound) {</span>
+<span class="nc" id="L479">                        return mappedFile;</span>
+                    }
+<span class="fc" id="L481">                    LOG_ERROR.warn(&quot;findMappedFileByOffset failure. &quot;, e);</span>
+                }
+            }
+<span class="nc" id="L484">        } catch (Exception e) {</span>
+<span class="nc" id="L485">            log.error(&quot;findMappedFileByOffset Exception&quot;, e);</span>
+<span class="fc" id="L486">        }</span>
+
+<span class="fc" id="L488">        return null;</span>
+    }
+
+    public MappedFile getFirstMappedFile() {
+<span class="fc" id="L492">        MappedFile mappedFileFirst = null;</span>
+
+<span class="fc bfc" id="L494" title="All 2 branches covered.">        if (!this.mappedFiles.isEmpty()) {</span>
+            try {
+<span class="fc" id="L496">                mappedFileFirst = this.mappedFiles.get(0);</span>
+<span class="nc" id="L497">            } catch (IndexOutOfBoundsException e) {</span>
+                //ignore
+<span class="nc" id="L499">            } catch (Exception e) {</span>
+<span class="nc" id="L500">                log.error(&quot;getFirstMappedFile has exception.&quot;, e);</span>
+<span class="pc" id="L501">            }</span>
+        }
+
+<span class="fc" id="L504">        return mappedFileFirst;</span>
+    }
+
+    public MappedFile findMappedFileByOffset(final long offset) {
+<span class="fc" id="L508">        return findMappedFileByOffset(offset, false);</span>
+    }
+
+    public long getMappedMemorySize() {
+<span class="fc" id="L512">        long size = 0;</span>
+
+<span class="fc" id="L514">        Object[] mfs = this.copyMappedFiles(0);</span>
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">        if (mfs != null) {</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">            for (Object mf : mfs) {</span>
+<span class="pc bpc" id="L517" title="1 of 2 branches missed.">                if (((ReferenceResource) mf).isAvailable()) {</span>
+<span class="fc" id="L518">                    size += this.mappedFileSize;</span>
+                }
+            }
+        }
+
+<span class="fc" id="L523">        return size;</span>
+    }
+
+    public boolean retryDeleteFirstFile(final long intervalForcibly) {
+<span class="nc" id="L527">        MappedFile mappedFile = this.getFirstMappedFile();</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">        if (mappedFile != null) {</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">            if (!mappedFile.isAvailable()) {</span>
+<span class="nc" id="L530">                log.warn(&quot;the mappedFile was destroyed once, but still alive, &quot; + mappedFile.getFileName());</span>
+<span class="nc" id="L531">                boolean result = mappedFile.destroy(intervalForcibly);</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">                if (result) {</span>
+<span class="nc" id="L533">                    log.info(&quot;the mappedFile re delete OK, &quot; + mappedFile.getFileName());</span>
+<span class="nc" id="L534">                    List&lt;MappedFile&gt; tmpFiles = new ArrayList&lt;MappedFile&gt;();</span>
+<span class="nc" id="L535">                    tmpFiles.add(mappedFile);</span>
+<span class="nc" id="L536">                    this.deleteExpiredFile(tmpFiles);</span>
+<span class="nc" id="L537">                } else {</span>
+<span class="nc" id="L538">                    log.warn(&quot;the mappedFile re delete failed, &quot; + mappedFile.getFileName());</span>
+                }
+
+<span class="nc" id="L541">                return result;</span>
+            }
+        }
+
+<span class="nc" id="L545">        return false;</span>
+    }
+
+    public void shutdown(final long intervalForcibly) {
+<span class="fc bfc" id="L549" title="All 2 branches covered.">        for (MappedFile mf : this.mappedFiles) {</span>
+<span class="fc" id="L550">            mf.shutdown(intervalForcibly);</span>
+<span class="fc" id="L551">        }</span>
+<span class="fc" id="L552">    }</span>
+
+    public void destroy() {
+<span class="fc bfc" id="L555" title="All 2 branches covered.">        for (MappedFile mf : this.mappedFiles) {</span>
+<span class="fc" id="L556">            mf.destroy(1000 * 3);</span>
+<span class="fc" id="L557">        }</span>
+<span class="fc" id="L558">        this.mappedFiles.clear();</span>
+<span class="fc" id="L559">        this.flushedWhere = 0;</span>
+
+        // delete parent directory
+<span class="fc" id="L562">        File file = new File(storePath);</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">        if (file.isDirectory()) {</span>
+<span class="fc" id="L564">            file.delete();</span>
+        }
+<span class="fc" id="L566">    }</span>
+
+    public long getFlushedWhere() {
+<span class="fc" id="L569">        return flushedWhere;</span>
+    }
+
+    public void setFlushedWhere(long flushedWhere) {
+<span class="nc" id="L573">        this.flushedWhere = flushedWhere;</span>
+<span class="nc" id="L574">    }</span>
+
+    public long getStoreTimestamp() {
+<span class="fc" id="L577">        return storeTimestamp;</span>
+    }
+
+    public List&lt;MappedFile&gt; getMappedFiles() {
+<span class="fc" id="L581">        return mappedFiles;</span>
+    }
+
+    public int getMappedFileSize() {
+<span class="nc" id="L585">        return mappedFileSize;</span>
+    }
+
+    public long getCommittedWhere() {
+<span class="nc" id="L589">        return committedWhere;</span>
+    }
+
+    public void setCommittedWhere(final long committedWhere) {
+<span class="nc" id="L593">        this.committedWhere = committedWhere;</span>
+<span class="nc" id="L594">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

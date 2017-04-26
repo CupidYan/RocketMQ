@@ -1,0 +1,72 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.plugin,AbstractPluginMessageStore,211,0,0,0,51,0,40,0,40,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.plugin,MessageStoreFactory,65,12,4,2,10,3,4,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.plugin,MessageStorePluginContext,9,18,0,0,3,7,3,2,3,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client.rebalance,RebalanceLockManager,511,23,40,0,95,5,24,2,4,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client.rebalance,RebalanceLockManager.LockEntry,47,0,6,0,12,0,10,0,7,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.transaction,TransactionRecord,17,0,0,0,7,0,5,0,5,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.longpolling,NotifyMessageArrivingListener,9,6,0,0,2,3,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.longpolling,ManyPullRequest,36,0,2,0,11,0,5,0,4,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.longpolling,PullRequest,39,0,0,0,14,0,7,0,7,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.longpolling,PullRequestHoldService,246,78,25,5,60,21,18,6,4,5
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.offset,ConsumerOffsetManager,508,56,60,2,93,17,42,8,11,8
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.slave,SlaveSynchronize,195,13,14,0,74,5,14,2,7,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client.net,Broker2Client.new ChannelFutureListener() {...},21,0,2,0,5,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client.net,Broker2Client,684,15,53,1,156,5,34,2,7,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.subscription,SubscriptionGroupManager,71,246,13,7,20,65,13,12,4,11
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,ConsumerGroupInfo,207,227,22,12,51,59,29,10,14,8
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,ClientHousekeepingService.new Runnable() {...},10,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,ClientChannelInfo,105,72,17,1,22,16,13,7,4,7
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,ClientHousekeepingService,71,33,0,0,17,10,5,4,5,4
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,DefaultConsumerIdsChangeListener,11,20,3,3,2,6,3,2,0,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,ConsumerManager,206,107,38,10,60,27,29,6,6,5
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.client,ProducerManager,67,281,12,24,14,81,12,13,0,7
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.mqtrace,ConsumeMessageContext,61,40,0,0,25,18,18,11,18,11
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.mqtrace,SendMessageContext,88,82,0,0,34,38,27,20,27,20
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.latency,BrokerFastFailure.new Runnable() {...},0,10,0,0,0,3,0,2,0,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.latency,FutureTaskExt,18,0,0,0,7,0,3,0,3,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.latency,BrokerFixedThreadPoolExecutor,33,9,0,0,7,2,4,1,4,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.latency,BrokerFastFailure,137,45,16,2,30,13,10,5,1,5
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.filtersrv,FilterServerUtil,50,0,6,0,12,0,6,0,3,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.filtersrv,FilterServerManager.FilterServerInfo,17,0,0,0,7,0,5,0,5,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.filtersrv,FilterServerManager.new Runnable() {...},5,11,0,0,2,4,0,2,0,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.filtersrv,FilterServerManager,147,98,13,5,32,26,12,7,3,7
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,EndTransactionProcessor.new Object() {...},75,0,0,0,1,0,1,0,1,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,SendMessageProcessor,453,652,58,44,99,166,47,18,2,8
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,ForwardRequestProcessor,14,0,0,0,6,0,4,0,4,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,ClientManageProcessor,134,83,13,6,40,29,10,6,2,4
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,PullMessageProcessor,544,680,62,45,112,160,52,19,2,9
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,QueryMessageProcessor,211,15,16,1,57,5,13,2,4,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,AbstractSendMessageProcessor,351,309,36,27,84,84,30,16,4,10
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,PullMessageProcessor.new Object() {...},12,81,0,0,0,2,0,1,0,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,PullMessageProcessor.new Runnable() {...},63,0,2,0,15,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,PullMessageProcessor.new ChannelFutureListener() {...},27,0,2,0,5,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,SendMessageProcessor.new Object() {...},10,65,0,0,0,1,0,1,0,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,ConsumerManageProcessor,213,10,14,0,64,4,13,2,5,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,EndTransactionProcessor,388,10,31,0,108,4,23,2,3,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,AdminBrokerProcessor.new Object() {...},12,0,0,0,1,0,1,0,1,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,QueryMessageProcessor.new ChannelFutureListener() {...},21,0,2,0,5,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,AdminBrokerProcessor,3019,10,182,0,718,4,147,2,39,2
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,QueryMessageProcessor.new ChannelFutureListener() {...},21,0,2,0,5,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.processor,PullMessageProcessor.2.new ChannelFutureListener() {...},32,0,2,0,6,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.topic,TopicConfigManager,353,515,52,22,84,139,47,13,11,12
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.pagecache,QueryMessageTransfer,104,0,8,0,26,0,11,0,7,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.pagecache,ManyMessageTransfer,104,0,8,0,26,0,11,0,7,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.pagecache,OneMessageTransfer,76,0,4,0,18,0,9,0,7,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.transaction.jdbc,JDBCTransactionStore,469,0,48,0,112,0,39,0,15,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.transaction.jdbc,JDBCTransactionStoreConfig,43,0,0,0,17,0,9,0,9,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker.out,BrokerOuterAPI,445,61,55,3,98,21,38,7,9,7
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController,355,1003,61,37,89,200,80,22,31,22
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerStartup.new Runnable() {...},55,0,2,0,13,0,3,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerStartup.new Object() {...},26,0,0,0,1,0,1,0,1,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerPathConfigHelper,6,68,0,0,3,5,2,5,2,5
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},11,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},18,0,0,0,6,0,2,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},17,0,0,0,6,0,2,0,2,0
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},10,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},12,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerStartup,450,7,33,0,116,3,23,1,6,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},11,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},10,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},10,6,0,0,5,1,1,1,1,1
+rocketmq-broker 4.1.0-incubating-SNAPSHOT,org.apache.rocketmq.broker,BrokerController.new Runnable() {...},15,6,0,0,5,1,1,1,1,1

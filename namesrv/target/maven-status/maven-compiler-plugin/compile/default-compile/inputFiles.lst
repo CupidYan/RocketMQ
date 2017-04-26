@@ -1,0 +1,8 @@
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/routeinfo/RouteInfoManager.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/NamesrvController.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/routeinfo/BrokerHousekeepingService.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/processor/DefaultRequestProcessor.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/kvconfig/KVConfigManager.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/NamesrvStartup.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/processor/ClusterTestRequestProcessor.java
+/home/cupid/Downloads/incubator-rocketmq/namesrv/src/main/java/org/apache/rocketmq/namesrv/kvconfig/KVConfigSerializeWrapper.java

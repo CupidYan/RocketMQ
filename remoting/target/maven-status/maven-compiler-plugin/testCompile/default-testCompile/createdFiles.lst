@@ -1,0 +1,12 @@
+org/apache/rocketmq/remoting/protocol/RemotingSerializableTest.class
+org/apache/rocketmq/remoting/protocol/RocketMQSerializableTest.class
+org/apache/rocketmq/remoting/protocol/RemotingSerializableTest$1.class
+org/apache/rocketmq/remoting/RemotingServerTest.class
+org/apache/rocketmq/remoting/RequestHeader.class
+org/apache/rocketmq/remoting/protocol/SampleCommandCustomHeader.class
+org/apache/rocketmq/remoting/RemotingServerTest$2.class
+org/apache/rocketmq/remoting/RemotingServerTest$1.class
+org/apache/rocketmq/remoting/protocol/RemotingCommandTest.class
+org/apache/rocketmq/remoting/protocol/Sample.class
+org/apache/rocketmq/remoting/protocol/ExtFieldsHeader.class
+org/apache/rocketmq/remoting/protocol/RemotingSerializableTest$2.class

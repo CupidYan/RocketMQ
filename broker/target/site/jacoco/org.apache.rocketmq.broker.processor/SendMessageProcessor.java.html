@@ -1,0 +1,484 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SendMessageProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.processor</a> &gt; <span class="el_source">SendMessageProcessor.java</span></div><h1>SendMessageProcessor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.processor;
+
+import io.netty.channel.ChannelHandlerContext;
+import java.net.SocketAddress;
+import java.util.List;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
+import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
+import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
+import org.apache.rocketmq.common.MQVersion;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.common.sysflag.TopicSysFlag;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.config.StorePathConfigHelper;
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
+
+public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
+
+    private List&lt;ConsumeMessageHook&gt; consumeMessageHookList;
+
+    public SendMessageProcessor(final BrokerController brokerController) {
+<span class="fc" id="L58">        super(brokerController);</span>
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+        SendMessageContext mqtraceContext;
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        switch (request.getCode()) {</span>
+            case RequestCode.CONSUMER_SEND_MSG_BACK:
+<span class="fc" id="L66">                return this.consumerSendMsgBack(ctx, request);</span>
+            default:
+<span class="fc" id="L68">                SendMessageRequestHeader requestHeader = parseRequestHeader(request);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                if (requestHeader == null) {</span>
+<span class="nc" id="L70">                    return null;</span>
+                }
+
+<span class="fc" id="L73">                mqtraceContext = buildMsgContext(ctx, requestHeader);</span>
+<span class="fc" id="L74">                this.executeSendMessageHookBefore(ctx, request, mqtraceContext);</span>
+<span class="fc" id="L75">                final RemotingCommand response = this.sendMessage(ctx, request, mqtraceContext, requestHeader);</span>
+
+<span class="fc" id="L77">                this.executeSendMessageHookAfter(response, mqtraceContext);</span>
+<span class="fc" id="L78">                return response;</span>
+        }
+    }
+
+    @Override
+    public boolean rejectRequest() {
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        return this.brokerController.getMessageStore().isOSPageCacheBusy() ||</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            this.brokerController.getMessageStore().isTransientStorePoolDeficient();</span>
+    }
+
+    private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
+        throws RemotingCommandException {
+<span class="fc" id="L90">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="fc" id="L91">        final ConsumerSendMsgBackRequestHeader requestHeader =</span>
+<span class="fc" id="L92">            (ConsumerSendMsgBackRequestHeader) request.decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);</span>
+
+<span class="pc bpc" id="L94" title="3 of 4 branches missed.">        if (this.hasConsumeMessageHook() &amp;&amp; !UtilAll.isBlank(requestHeader.getOriginMsgId())) {</span>
+
+<span class="nc" id="L96">            ConsumeMessageContext context = new ConsumeMessageContext();</span>
+<span class="nc" id="L97">            context.setConsumerGroup(requestHeader.getGroup());</span>
+<span class="nc" id="L98">            context.setTopic(requestHeader.getOriginTopic());</span>
+<span class="nc" id="L99">            context.setCommercialRcvStats(BrokerStatsManager.StatsType.SEND_BACK);</span>
+<span class="nc" id="L100">            context.setCommercialRcvTimes(1);</span>
+<span class="nc" id="L101">            context.setCommercialOwner(request.getExtFields().get(BrokerStatsManager.COMMERCIAL_OWNER));</span>
+
+<span class="nc" id="L103">            this.executeConsumeMessageHookAfter(context);</span>
+        }
+
+<span class="fc" id="L106">        SubscriptionGroupConfig subscriptionGroupConfig =</span>
+<span class="fc" id="L107">            this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getGroup());</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (null == subscriptionGroupConfig) {</span>
+<span class="nc" id="L109">            response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);</span>
+<span class="nc" id="L110">            response.setRemark(&quot;subscription group not exist, &quot; + requestHeader.getGroup() + &quot; &quot;</span>
+<span class="nc" id="L111">                + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));</span>
+<span class="nc" id="L112">            return response;</span>
+        }
+
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (!PermName.isWriteable(this.brokerController.getBrokerConfig().getBrokerPermission())) {</span>
+<span class="nc" id="L116">            response.setCode(ResponseCode.NO_PERMISSION);</span>
+<span class="nc" id="L117">            response.setRemark(&quot;the broker[&quot; + this.brokerController.getBrokerConfig().getBrokerIP1() + &quot;] sending message is forbidden&quot;);</span>
+<span class="nc" id="L118">            return response;</span>
+        }
+
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (subscriptionGroupConfig.getRetryQueueNums() &lt;= 0) {</span>
+<span class="nc" id="L122">            response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L123">            response.setRemark(null);</span>
+<span class="nc" id="L124">            return response;</span>
+        }
+
+<span class="fc" id="L127">        String newTopic = MixAll.getRetryTopic(requestHeader.getGroup());</span>
+<span class="fc" id="L128">        int queueIdInt = Math.abs(this.random.nextInt() % 99999999) % subscriptionGroupConfig.getRetryQueueNums();</span>
+
+<span class="fc" id="L130">        int topicSysFlag = 0;</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (requestHeader.isUnitMode()) {</span>
+<span class="nc" id="L132">            topicSysFlag = TopicSysFlag.buildSysFlag(false, true);</span>
+        }
+
+<span class="fc" id="L135">        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(//</span>
+            newTopic, //
+<span class="fc" id="L137">            subscriptionGroupConfig.getRetryQueueNums(), //</span>
+            PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (null == topicConfig) {</span>
+<span class="nc" id="L140">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L141">            response.setRemark(&quot;topic[&quot; + newTopic + &quot;] not exist&quot;);</span>
+<span class="nc" id="L142">            return response;</span>
+        }
+
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (!PermName.isWriteable(topicConfig.getPerm())) {</span>
+<span class="nc" id="L146">            response.setCode(ResponseCode.NO_PERMISSION);</span>
+<span class="nc" id="L147">            response.setRemark(String.format(&quot;the topic[%s] sending message is forbidden&quot;, newTopic));</span>
+<span class="nc" id="L148">            return response;</span>
+        }
+
+<span class="fc" id="L151">        MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (null == msgExt) {</span>
+<span class="nc" id="L153">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L154">            response.setRemark(&quot;look message by offset failed, &quot; + requestHeader.getOffset());</span>
+<span class="nc" id="L155">            return response;</span>
+        }
+
+<span class="fc" id="L158">        final String retryTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if (null == retryTopic) {</span>
+<span class="fc" id="L160">            MessageAccessor.putProperty(msgExt, MessageConst.PROPERTY_RETRY_TOPIC, msgExt.getTopic());</span>
+        }
+<span class="fc" id="L162">        msgExt.setWaitStoreMsgOK(false);</span>
+
+<span class="fc" id="L164">        int delayLevel = requestHeader.getDelayLevel();</span>
+
+<span class="fc" id="L166">        int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (request.getVersion() &gt;= MQVersion.Version.V3_4_9.ordinal()) {</span>
+<span class="nc" id="L168">            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();</span>
+        }
+
+<span class="pc bpc" id="L171" title="2 of 4 branches missed.">        if (msgExt.getReconsumeTimes() &gt;= maxReconsumeTimes//</span>
+            || delayLevel &lt; 0) {
+<span class="nc" id="L173">            newTopic = MixAll.getDLQTopic(requestHeader.getGroup());</span>
+<span class="nc" id="L174">            queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;</span>
+
+<span class="nc" id="L176">            topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic, //</span>
+                DLQ_NUMS_PER_GROUP, //
+                PermName.PERM_WRITE, 0
+            );
+<span class="nc bnc" id="L180" title="All 2 branches missed.">            if (null == topicConfig) {</span>
+<span class="nc" id="L181">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L182">                response.setRemark(&quot;topic[&quot; + newTopic + &quot;] not exist&quot;);</span>
+<span class="nc" id="L183">                return response;</span>
+            }
+        } else {
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">            if (0 == delayLevel) {</span>
+<span class="nc" id="L187">                delayLevel = 3 + msgExt.getReconsumeTimes();</span>
+            }
+
+<span class="fc" id="L190">            msgExt.setDelayTimeLevel(delayLevel);</span>
+        }
+
+<span class="fc" id="L193">        MessageExtBrokerInner msgInner = new MessageExtBrokerInner();</span>
+<span class="fc" id="L194">        msgInner.setTopic(newTopic);</span>
+<span class="fc" id="L195">        msgInner.setBody(msgExt.getBody());</span>
+<span class="fc" id="L196">        msgInner.setFlag(msgExt.getFlag());</span>
+<span class="fc" id="L197">        MessageAccessor.setProperties(msgInner, msgExt.getProperties());</span>
+<span class="fc" id="L198">        msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgExt.getProperties()));</span>
+<span class="fc" id="L199">        msgInner.setTagsCode(MessageExtBrokerInner.tagsString2tagsCode(null, msgExt.getTags()));</span>
+
+<span class="fc" id="L201">        msgInner.setQueueId(queueIdInt);</span>
+<span class="fc" id="L202">        msgInner.setSysFlag(msgExt.getSysFlag());</span>
+<span class="fc" id="L203">        msgInner.setBornTimestamp(msgExt.getBornTimestamp());</span>
+<span class="fc" id="L204">        msgInner.setBornHost(msgExt.getBornHost());</span>
+<span class="fc" id="L205">        msgInner.setStoreHost(this.getStoreHost());</span>
+<span class="fc" id="L206">        msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);</span>
+
+<span class="fc" id="L208">        String originMsgId = MessageAccessor.getOriginMessageId(msgExt);</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);</span>
+
+<span class="fc" id="L211">        PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (putMessageResult != null) {</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">            switch (putMessageResult.getPutMessageStatus()) {</span>
+                case PUT_OK:
+<span class="fc" id="L215">                    String backTopic = msgExt.getTopic();</span>
+<span class="fc" id="L216">                    String correctTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                    if (correctTopic != null) {</span>
+<span class="nc" id="L218">                        backTopic = correctTopic;</span>
+                    }
+
+<span class="fc" id="L221">                    this.brokerController.getBrokerStatsManager().incSendBackNums(requestHeader.getGroup(), backTopic);</span>
+
+<span class="fc" id="L223">                    response.setCode(ResponseCode.SUCCESS);</span>
+<span class="fc" id="L224">                    response.setRemark(null);</span>
+
+<span class="fc" id="L226">                    return response;</span>
+                default:
+                    break;
+            }
+
+<span class="nc" id="L231">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L232">            response.setRemark(putMessageResult.getPutMessageStatus().name());</span>
+<span class="nc" id="L233">            return response;</span>
+        }
+
+<span class="nc" id="L236">        response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L237">        response.setRemark(&quot;putMessageResult is null&quot;);</span>
+<span class="nc" id="L238">        return response;</span>
+    }
+
+    private RemotingCommand sendMessage(final ChannelHandlerContext ctx, //
+        final RemotingCommand request, //
+        final SendMessageContext sendMessageContext, //
+        final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
+
+<span class="fc" id="L246">        final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);</span>
+<span class="fc" id="L247">        final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();</span>
+
+<span class="fc" id="L249">        response.setOpaque(request.getOpaque());</span>
+
+<span class="fc" id="L251">        response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());</span>
+<span class="fc" id="L252">        response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));</span>
+
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        if (log.isDebugEnabled()) {</span>
+<span class="nc" id="L255">            log.debug(&quot;receive SendMessage request command, {}&quot;, request);</span>
+        }
+
+<span class="fc" id="L258">        final long startTimstamp = this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp();</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">        if (this.brokerController.getMessageStore().now() &lt; startTimstamp) {</span>
+<span class="nc" id="L260">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L261">            response.setRemark(String.format(&quot;broker unable to service, until %s&quot;, UtilAll.timeMillisToHumanString2(startTimstamp)));</span>
+<span class="nc" id="L262">            return response;</span>
+        }
+
+<span class="fc" id="L265">        response.setCode(-1);</span>
+<span class="fc" id="L266">        super.msgCheck(ctx, requestHeader, response);</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (response.getCode() != -1) {</span>
+<span class="nc" id="L268">            return response;</span>
+        }
+
+<span class="fc" id="L271">        final byte[] body = request.getBody();</span>
+
+<span class="fc" id="L273">        int queueIdInt = requestHeader.getQueueId();</span>
+<span class="fc" id="L274">        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());</span>
+
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (queueIdInt &lt; 0) {</span>
+<span class="nc" id="L277">            queueIdInt = Math.abs(this.random.nextInt() % 99999999) % topicConfig.getWriteQueueNums();</span>
+        }
+
+<span class="fc" id="L280">        int sysFlag = requestHeader.getSysFlag();</span>
+
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">        if (TopicFilterType.MULTI_TAG == topicConfig.getTopicFilterType()) {</span>
+<span class="nc" id="L283">            sysFlag |= MessageSysFlag.MULTI_TAGS_FLAG;</span>
+        }
+
+<span class="fc" id="L286">        String newTopic = requestHeader.getTopic();</span>
+<span class="pc bpc" id="L287" title="2 of 4 branches missed.">        if (null != newTopic &amp;&amp; newTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {</span>
+<span class="nc" id="L288">            String groupName = newTopic.substring(MixAll.RETRY_GROUP_TOPIC_PREFIX.length());</span>
+<span class="nc" id="L289">            SubscriptionGroupConfig subscriptionGroupConfig =</span>
+<span class="nc" id="L290">                this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(groupName);</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (null == subscriptionGroupConfig) {</span>
+<span class="nc" id="L292">                response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);</span>
+<span class="nc" id="L293">                response.setRemark(</span>
+<span class="nc" id="L294">                    &quot;subscription group not exist, &quot; + groupName + &quot; &quot; + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));</span>
+<span class="nc" id="L295">                return response;</span>
+            }
+
+<span class="nc" id="L298">            int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">            if (request.getVersion() &gt;= MQVersion.Version.V3_4_9.ordinal()) {</span>
+<span class="nc" id="L300">                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();</span>
+            }
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            int reconsumeTimes = requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes();</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            if (reconsumeTimes &gt;= maxReconsumeTimes) {</span>
+<span class="nc" id="L304">                newTopic = MixAll.getDLQTopic(groupName);</span>
+<span class="nc" id="L305">                queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;</span>
+<span class="nc" id="L306">                topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic, //</span>
+                    DLQ_NUMS_PER_GROUP, //
+                    PermName.PERM_WRITE, 0
+                );
+<span class="nc bnc" id="L310" title="All 2 branches missed.">                if (null == topicConfig) {</span>
+<span class="nc" id="L311">                    response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L312">                    response.setRemark(&quot;topic[&quot; + newTopic + &quot;] not exist&quot;);</span>
+<span class="nc" id="L313">                    return response;</span>
+                }
+            }
+        }
+<span class="fc" id="L317">        MessageExtBrokerInner msgInner = new MessageExtBrokerInner();</span>
+<span class="fc" id="L318">        msgInner.setTopic(newTopic);</span>
+<span class="fc" id="L319">        msgInner.setBody(body);</span>
+<span class="fc" id="L320">        msgInner.setFlag(requestHeader.getFlag());</span>
+<span class="fc" id="L321">        MessageAccessor.setProperties(msgInner, MessageDecoder.string2messageProperties(requestHeader.getProperties()));</span>
+<span class="fc" id="L322">        msgInner.setPropertiesString(requestHeader.getProperties());</span>
+<span class="fc" id="L323">        msgInner.setTagsCode(MessageExtBrokerInner.tagsString2tagsCode(topicConfig.getTopicFilterType(), msgInner.getTags()));</span>
+
+<span class="fc" id="L325">        msgInner.setQueueId(queueIdInt);</span>
+<span class="fc" id="L326">        msgInner.setSysFlag(sysFlag);</span>
+<span class="fc" id="L327">        msgInner.setBornTimestamp(requestHeader.getBornTimestamp());</span>
+<span class="fc" id="L328">        msgInner.setBornHost(ctx.channel().remoteAddress());</span>
+<span class="fc" id="L329">        msgInner.setStoreHost(this.getStoreHost());</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());</span>
+
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">        if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {</span>
+<span class="nc" id="L333">            String traFlag = msgInner.getProperty(MessageConst.PROPERTY_TRANSACTION_PREPARED);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">            if (traFlag != null) {</span>
+<span class="nc" id="L335">                response.setCode(ResponseCode.NO_PERMISSION);</span>
+<span class="nc" id="L336">                response.setRemark(</span>
+<span class="nc" id="L337">                    &quot;the broker[&quot; + this.brokerController.getBrokerConfig().getBrokerIP1() + &quot;] sending transaction message is forbidden&quot;);</span>
+<span class="nc" id="L338">                return response;</span>
+            }
+        }
+
+<span class="fc" id="L342">        PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (putMessageResult != null) {</span>
+<span class="fc" id="L344">            boolean sendOK = false;</span>
+
+<span class="pc bpc" id="L346" title="2 of 10 branches missed.">            switch (putMessageResult.getPutMessageStatus()) {</span>
+                // Success
+                case PUT_OK:
+<span class="fc" id="L349">                    sendOK = true;</span>
+<span class="fc" id="L350">                    response.setCode(ResponseCode.SUCCESS);</span>
+<span class="fc" id="L351">                    break;</span>
+                case FLUSH_DISK_TIMEOUT:
+<span class="fc" id="L353">                    response.setCode(ResponseCode.FLUSH_DISK_TIMEOUT);</span>
+<span class="fc" id="L354">                    sendOK = true;</span>
+<span class="fc" id="L355">                    break;</span>
+                case FLUSH_SLAVE_TIMEOUT:
+<span class="fc" id="L357">                    response.setCode(ResponseCode.FLUSH_SLAVE_TIMEOUT);</span>
+<span class="fc" id="L358">                    sendOK = true;</span>
+<span class="fc" id="L359">                    break;</span>
+                case SLAVE_NOT_AVAILABLE:
+<span class="fc" id="L361">                    response.setCode(ResponseCode.SLAVE_NOT_AVAILABLE);</span>
+<span class="fc" id="L362">                    sendOK = true;</span>
+<span class="fc" id="L363">                    break;</span>
+
+                // Failed
+                case CREATE_MAPEDFILE_FAILED:
+<span class="fc" id="L367">                    response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="fc" id="L368">                    response.setRemark(&quot;create mapped file failed, server is busy or broken.&quot;);</span>
+<span class="fc" id="L369">                    break;</span>
+                case MESSAGE_ILLEGAL:
+                case PROPERTIES_SIZE_EXCEEDED:
+<span class="fc" id="L372">                    response.setCode(ResponseCode.MESSAGE_ILLEGAL);</span>
+<span class="fc" id="L373">                    response.setRemark(</span>
+                        &quot;the message is illegal, maybe msg body or properties length not matched. msg body length limit 128k, msg properties length limit 32k.&quot;);
+<span class="fc" id="L375">                    break;</span>
+                case SERVICE_NOT_AVAILABLE:
+<span class="fc" id="L377">                    response.setCode(ResponseCode.SERVICE_NOT_AVAILABLE);</span>
+<span class="fc" id="L378">                    response.setRemark(</span>
+<span class="fc" id="L379">                        &quot;service not available now, maybe disk full, &quot; + diskUtil() + &quot;, maybe your broker machine memory too small.&quot;);</span>
+<span class="fc" id="L380">                    break;</span>
+                case OS_PAGECACHE_BUSY:
+<span class="fc" id="L382">                    response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="fc" id="L383">                    response.setRemark(&quot;[PC_SYNCHRONIZED]broker busy, start flow control for a while&quot;);</span>
+<span class="fc" id="L384">                    break;</span>
+                case UNKNOWN_ERROR:
+<span class="nc" id="L386">                    response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L387">                    response.setRemark(&quot;UNKNOWN_ERROR&quot;);</span>
+<span class="nc" id="L388">                    break;</span>
+                default:
+<span class="nc" id="L390">                    response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L391">                    response.setRemark(&quot;UNKNOWN_ERROR DEFAULT&quot;);</span>
+                    break;
+            }
+
+<span class="fc" id="L395">            String owner = request.getExtFields().get(BrokerStatsManager.COMMERCIAL_OWNER);</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">            if (sendOK) {</span>
+
+<span class="fc" id="L398">                this.brokerController.getBrokerStatsManager().incTopicPutNums(msgInner.getTopic());</span>
+<span class="fc" id="L399">                this.brokerController.getBrokerStatsManager().incTopicPutSize(msgInner.getTopic(),</span>
+<span class="fc" id="L400">                    putMessageResult.getAppendMessageResult().getWroteBytes());</span>
+<span class="fc" id="L401">                this.brokerController.getBrokerStatsManager().incBrokerPutNums();</span>
+
+<span class="fc" id="L403">                response.setRemark(null);</span>
+
+<span class="fc" id="L405">                responseHeader.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());</span>
+<span class="fc" id="L406">                responseHeader.setQueueId(queueIdInt);</span>
+<span class="fc" id="L407">                responseHeader.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());</span>
+
+<span class="fc" id="L409">                doResponse(ctx, request, response);</span>
+
+<span class="fc bfc" id="L411" title="All 2 branches covered.">                if (hasSendMessageHook()) {</span>
+<span class="fc" id="L412">                    sendMessageContext.setMsgId(responseHeader.getMsgId());</span>
+<span class="fc" id="L413">                    sendMessageContext.setQueueId(responseHeader.getQueueId());</span>
+<span class="fc" id="L414">                    sendMessageContext.setQueueOffset(responseHeader.getQueueOffset());</span>
+
+<span class="fc" id="L416">                    int commercialBaseCount = brokerController.getBrokerConfig().getCommercialBaseCount();</span>
+<span class="fc" id="L417">                    int wroteSize = putMessageResult.getAppendMessageResult().getWroteBytes();</span>
+<span class="fc" id="L418">                    int incValue = (int) Math.ceil(wroteSize / BrokerStatsManager.SIZE_PER_COUNT) * commercialBaseCount;</span>
+
+<span class="fc" id="L420">                    sendMessageContext.setCommercialSendStats(BrokerStatsManager.StatsType.SEND_SUCCESS);</span>
+<span class="fc" id="L421">                    sendMessageContext.setCommercialSendTimes(incValue);</span>
+<span class="fc" id="L422">                    sendMessageContext.setCommercialSendSize(wroteSize);</span>
+<span class="fc" id="L423">                    sendMessageContext.setCommercialOwner(owner);</span>
+                }
+<span class="fc" id="L425">                return null;</span>
+            } else {
+<span class="pc bpc" id="L427" title="1 of 2 branches missed.">                if (hasSendMessageHook()) {</span>
+<span class="nc" id="L428">                    int wroteSize = request.getBody().length;</span>
+<span class="nc" id="L429">                    int incValue = (int) Math.ceil(wroteSize / BrokerStatsManager.SIZE_PER_COUNT);</span>
+
+<span class="nc" id="L431">                    sendMessageContext.setCommercialSendStats(BrokerStatsManager.StatsType.SEND_FAILURE);</span>
+<span class="nc" id="L432">                    sendMessageContext.setCommercialSendTimes(incValue);</span>
+<span class="nc" id="L433">                    sendMessageContext.setCommercialSendSize(wroteSize);</span>
+<span class="nc" id="L434">                    sendMessageContext.setCommercialOwner(owner);</span>
+                }
+            }
+<span class="fc" id="L437">        } else {</span>
+<span class="nc" id="L438">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L439">            response.setRemark(&quot;store putMessage return null&quot;);</span>
+        }
+
+<span class="fc" id="L442">        return response;</span>
+    }
+
+    public boolean hasConsumeMessageHook() {
+<span class="pc bpc" id="L446" title="3 of 4 branches missed.">        return consumeMessageHookList != null &amp;&amp; !this.consumeMessageHookList.isEmpty();</span>
+    }
+
+    public void executeConsumeMessageHookAfter(final ConsumeMessageContext context) {
+<span class="nc bnc" id="L450" title="All 2 branches missed.">        if (hasConsumeMessageHook()) {</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">            for (ConsumeMessageHook hook : this.consumeMessageHookList) {</span>
+                try {
+<span class="nc" id="L453">                    hook.consumeMessageAfter(context);</span>
+<span class="nc" id="L454">                } catch (Throwable e) {</span>
+                    // Ignore
+<span class="nc" id="L456">                }</span>
+<span class="nc" id="L457">            }</span>
+        }
+<span class="nc" id="L459">    }</span>
+
+    public SocketAddress getStoreHost() {
+<span class="fc" id="L462">        return storeHost;</span>
+    }
+
+    private String diskUtil() {
+<span class="fc" id="L466">        String storePathPhysic = this.brokerController.getMessageStoreConfig().getStorePathCommitLog();</span>
+<span class="fc" id="L467">        double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);</span>
+
+<span class="fc" id="L469">        String storePathLogis =</span>
+<span class="fc" id="L470">            StorePathConfigHelper.getStorePathConsumeQueue(this.brokerController.getMessageStoreConfig().getStorePathRootDir());</span>
+<span class="fc" id="L471">        double logisRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogis);</span>
+
+<span class="fc" id="L473">        String storePathIndex =</span>
+<span class="fc" id="L474">            StorePathConfigHelper.getStorePathIndex(this.brokerController.getMessageStoreConfig().getStorePathRootDir());</span>
+<span class="fc" id="L475">        double indexRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathIndex);</span>
+
+<span class="fc" id="L477">        return String.format(&quot;CL: %5.2f CQ: %5.2f INDEX: %5.2f&quot;, physicRatio, logisRatio, indexRatio);</span>
+    }
+
+    public void registerConsumeMessageHook(List&lt;ConsumeMessageHook&gt; consumeMessageHookList) {
+<span class="fc" id="L481">        this.consumeMessageHookList = consumeMessageHookList;</span>
+<span class="fc" id="L482">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

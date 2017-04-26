@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClientConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client</a> &gt; <span class="el_source">ClientConfig.java</span></div><h1>ClientConfig.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.client;
+
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+
+/**
+ * Client Common configuration
+ */
+<span class="fc" id="L26">public class ClientConfig {</span>
+    public static final String SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY = &quot;com.rocketmq.sendMessageWithVIPChannel&quot;;
+<span class="fc" id="L28">    private String namesrvAddr = System.getProperty(MixAll.NAMESRV_ADDR_PROPERTY, System.getenv(MixAll.NAMESRV_ADDR_ENV));</span>
+<span class="fc" id="L29">    private String clientIP = RemotingUtil.getLocalAddress();</span>
+<span class="fc" id="L30">    private String instanceName = System.getProperty(&quot;rocketmq.client.name&quot;, &quot;DEFAULT&quot;);</span>
+<span class="fc" id="L31">    private int clientCallbackExecutorThreads = Runtime.getRuntime().availableProcessors();</span>
+    /**
+     * Pulling topic information interval from the named server
+     */
+<span class="fc" id="L35">    private int pollNameServerInteval = 1000 * 30;</span>
+    /**
+     * Heartbeat interval in microseconds with message broker
+     */
+<span class="fc" id="L39">    private int heartbeatBrokerInterval = 1000 * 30;</span>
+    /**
+     * Offset persistent interval for consumer
+     */
+<span class="fc" id="L43">    private int persistConsumerOffsetInterval = 1000 * 5;</span>
+<span class="fc" id="L44">    private boolean unitMode = false;</span>
+    private String unitName;
+<span class="fc" id="L46">    private boolean vipChannelEnabled = Boolean.parseBoolean(System.getProperty(SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY, &quot;true&quot;));</span>
+
+    public String buildMQClientId() {
+<span class="fc" id="L49">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L50">        sb.append(this.getClientIP());</span>
+
+<span class="fc" id="L52">        sb.append(&quot;@&quot;);</span>
+<span class="fc" id="L53">        sb.append(this.getInstanceName());</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        if (!UtilAll.isBlank(this.unitName)) {</span>
+<span class="nc" id="L55">            sb.append(&quot;@&quot;);</span>
+<span class="nc" id="L56">            sb.append(this.unitName);</span>
+        }
+
+<span class="fc" id="L59">        return sb.toString();</span>
+    }
+
+    public String getClientIP() {
+<span class="fc" id="L63">        return clientIP;</span>
+    }
+
+    public void setClientIP(String clientIP) {
+<span class="nc" id="L67">        this.clientIP = clientIP;</span>
+<span class="nc" id="L68">    }</span>
+
+    public String getInstanceName() {
+<span class="fc" id="L71">        return instanceName;</span>
+    }
+
+    public void setInstanceName(String instanceName) {
+<span class="nc" id="L75">        this.instanceName = instanceName;</span>
+<span class="nc" id="L76">    }</span>
+
+    public void changeInstanceNameToPID() {
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (this.instanceName.equals(&quot;DEFAULT&quot;)) {</span>
+<span class="fc" id="L80">            this.instanceName = String.valueOf(UtilAll.getPid());</span>
+        }
+<span class="fc" id="L82">    }</span>
+
+    public void resetClientConfig(final ClientConfig cc) {
+<span class="fc" id="L85">        this.namesrvAddr = cc.namesrvAddr;</span>
+<span class="fc" id="L86">        this.clientIP = cc.clientIP;</span>
+<span class="fc" id="L87">        this.instanceName = cc.instanceName;</span>
+<span class="fc" id="L88">        this.clientCallbackExecutorThreads = cc.clientCallbackExecutorThreads;</span>
+<span class="fc" id="L89">        this.pollNameServerInteval = cc.pollNameServerInteval;</span>
+<span class="fc" id="L90">        this.heartbeatBrokerInterval = cc.heartbeatBrokerInterval;</span>
+<span class="fc" id="L91">        this.persistConsumerOffsetInterval = cc.persistConsumerOffsetInterval;</span>
+<span class="fc" id="L92">        this.unitMode = cc.unitMode;</span>
+<span class="fc" id="L93">        this.unitName = cc.unitName;</span>
+<span class="fc" id="L94">        this.vipChannelEnabled = cc.vipChannelEnabled;</span>
+<span class="fc" id="L95">    }</span>
+
+    public ClientConfig cloneClientConfig() {
+<span class="fc" id="L98">        ClientConfig cc = new ClientConfig();</span>
+<span class="fc" id="L99">        cc.namesrvAddr = namesrvAddr;</span>
+<span class="fc" id="L100">        cc.clientIP = clientIP;</span>
+<span class="fc" id="L101">        cc.instanceName = instanceName;</span>
+<span class="fc" id="L102">        cc.clientCallbackExecutorThreads = clientCallbackExecutorThreads;</span>
+<span class="fc" id="L103">        cc.pollNameServerInteval = pollNameServerInteval;</span>
+<span class="fc" id="L104">        cc.heartbeatBrokerInterval = heartbeatBrokerInterval;</span>
+<span class="fc" id="L105">        cc.persistConsumerOffsetInterval = persistConsumerOffsetInterval;</span>
+<span class="fc" id="L106">        cc.unitMode = unitMode;</span>
+<span class="fc" id="L107">        cc.unitName = unitName;</span>
+<span class="fc" id="L108">        cc.vipChannelEnabled = vipChannelEnabled;</span>
+<span class="fc" id="L109">        return cc;</span>
+    }
+
+    public String getNamesrvAddr() {
+<span class="fc" id="L113">        return namesrvAddr;</span>
+    }
+
+    public void setNamesrvAddr(String namesrvAddr) {
+<span class="fc" id="L117">        this.namesrvAddr = namesrvAddr;</span>
+<span class="fc" id="L118">    }</span>
+
+    public int getClientCallbackExecutorThreads() {
+<span class="fc" id="L121">        return clientCallbackExecutorThreads;</span>
+    }
+
+    public void setClientCallbackExecutorThreads(int clientCallbackExecutorThreads) {
+<span class="nc" id="L125">        this.clientCallbackExecutorThreads = clientCallbackExecutorThreads;</span>
+<span class="nc" id="L126">    }</span>
+
+    public int getPollNameServerInteval() {
+<span class="fc" id="L129">        return pollNameServerInteval;</span>
+    }
+
+    public void setPollNameServerInteval(int pollNameServerInteval) {
+<span class="nc" id="L133">        this.pollNameServerInteval = pollNameServerInteval;</span>
+<span class="nc" id="L134">    }</span>
+
+    public int getHeartbeatBrokerInterval() {
+<span class="fc" id="L137">        return heartbeatBrokerInterval;</span>
+    }
+
+    public void setHeartbeatBrokerInterval(int heartbeatBrokerInterval) {
+<span class="nc" id="L141">        this.heartbeatBrokerInterval = heartbeatBrokerInterval;</span>
+<span class="nc" id="L142">    }</span>
+
+    public int getPersistConsumerOffsetInterval() {
+<span class="fc" id="L145">        return persistConsumerOffsetInterval;</span>
+    }
+
+    public void setPersistConsumerOffsetInterval(int persistConsumerOffsetInterval) {
+<span class="nc" id="L149">        this.persistConsumerOffsetInterval = persistConsumerOffsetInterval;</span>
+<span class="nc" id="L150">    }</span>
+
+    public String getUnitName() {
+<span class="fc" id="L153">        return unitName;</span>
+    }
+
+    public void setUnitName(String unitName) {
+<span class="nc" id="L157">        this.unitName = unitName;</span>
+<span class="nc" id="L158">    }</span>
+
+    public boolean isUnitMode() {
+<span class="fc" id="L161">        return unitMode;</span>
+    }
+
+    public void setUnitMode(boolean unitMode) {
+<span class="nc" id="L165">        this.unitMode = unitMode;</span>
+<span class="nc" id="L166">    }</span>
+
+    public boolean isVipChannelEnabled() {
+<span class="fc" id="L169">        return vipChannelEnabled;</span>
+    }
+
+    public void setVipChannelEnabled(final boolean vipChannelEnabled) {
+<span class="nc" id="L173">        this.vipChannelEnabled = vipChannelEnabled;</span>
+<span class="nc" id="L174">    }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L178">        return &quot;ClientConfig [namesrvAddr=&quot; + namesrvAddr + &quot;, clientIP=&quot; + clientIP + &quot;, instanceName=&quot; + instanceName</span>
+            + &quot;, clientCallbackExecutorThreads=&quot; + clientCallbackExecutorThreads + &quot;, pollNameServerInteval=&quot; + pollNameServerInteval
+            + &quot;, heartbeatBrokerInterval=&quot; + heartbeatBrokerInterval + &quot;, persistConsumerOffsetInterval=&quot;
+            + persistConsumerOffsetInterval + &quot;, unitMode=&quot; + unitMode + &quot;, unitName=&quot; + unitName + &quot;, vipChannelEnabled=&quot;
+            + vipChannelEnabled + &quot;]&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

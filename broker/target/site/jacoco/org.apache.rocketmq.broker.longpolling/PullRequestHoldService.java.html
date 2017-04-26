@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PullRequestHoldService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.longpolling</a> &gt; <span class="el_source">PullRequestHoldService.java</span></div><h1>PullRequestHoldService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.longpolling;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.common.ServiceThread;
+import org.apache.rocketmq.common.SystemClock;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.store.DefaultMessageFilter;
+import org.apache.rocketmq.store.MessageFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class PullRequestHoldService extends ServiceThread {
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+    private static final String TOPIC_QUEUEID_SEPARATOR = &quot;@&quot;;
+    private final BrokerController brokerController;
+<span class="fc" id="L35">    private final SystemClock systemClock = new SystemClock();</span>
+<span class="fc" id="L36">    private final MessageFilter messageFilter = new DefaultMessageFilter();</span>
+<span class="fc" id="L37">    private ConcurrentHashMap&lt;String/* topic@queueId */, ManyPullRequest&gt; pullRequestTable =</span>
+        new ConcurrentHashMap&lt;String, ManyPullRequest&gt;(1024);
+
+<span class="fc" id="L40">    public PullRequestHoldService(final BrokerController brokerController) {</span>
+<span class="fc" id="L41">        this.brokerController = brokerController;</span>
+<span class="fc" id="L42">    }</span>
+
+    public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
+<span class="nc" id="L45">        String key = this.buildKey(topic, queueId);</span>
+<span class="nc" id="L46">        ManyPullRequest mpr = this.pullRequestTable.get(key);</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (null == mpr) {</span>
+<span class="nc" id="L48">            mpr = new ManyPullRequest();</span>
+<span class="nc" id="L49">            ManyPullRequest prev = this.pullRequestTable.putIfAbsent(key, mpr);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">            if (prev != null) {</span>
+<span class="nc" id="L51">                mpr = prev;</span>
+            }
+        }
+
+<span class="nc" id="L55">        mpr.addPullRequest(pullRequest);</span>
+<span class="nc" id="L56">    }</span>
+
+    private String buildKey(final String topic, final int queueId) {
+<span class="nc" id="L59">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L60">        sb.append(topic);</span>
+<span class="nc" id="L61">        sb.append(TOPIC_QUEUEID_SEPARATOR);</span>
+<span class="nc" id="L62">        sb.append(queueId);</span>
+<span class="nc" id="L63">        return sb.toString();</span>
+    }
+
+    @Override
+    public void run() {
+<span class="fc" id="L68">        log.info(&quot;{} service started&quot;, this.getServiceName());</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        while (!this.isStopped()) {</span>
+            try {
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {</span>
+<span class="fc" id="L72">                    this.waitForRunning(5 * 1000);</span>
+                } else {
+<span class="nc" id="L74">                    this.waitForRunning(this.brokerController.getBrokerConfig().getShortPollingTimeMills());</span>
+                }
+
+<span class="fc" id="L77">                long beginLockTimestamp = this.systemClock.now();</span>
+<span class="fc" id="L78">                this.checkHoldRequest();</span>
+<span class="fc" id="L79">                long costTime = this.systemClock.now() - beginLockTimestamp;</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                if (costTime &gt; 5 * 1000) {</span>
+<span class="nc" id="L81">                    log.info(&quot;[NOTIFYME] check hold request cost {} ms.&quot;, costTime);</span>
+                }
+<span class="nc" id="L83">            } catch (Throwable e) {</span>
+<span class="nc" id="L84">                log.warn(this.getServiceName() + &quot; service has exception. &quot;, e);</span>
+<span class="pc" id="L85">            }</span>
+        }
+
+<span class="fc" id="L88">        log.info(&quot;{} service end&quot;, this.getServiceName());</span>
+<span class="fc" id="L89">    }</span>
+
+    @Override
+    public String getServiceName() {
+<span class="fc" id="L93">        return PullRequestHoldService.class.getSimpleName();</span>
+    }
+
+    private void checkHoldRequest() {
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        for (String key : this.pullRequestTable.keySet()) {</span>
+<span class="nc" id="L98">            String[] kArray = key.split(TOPIC_QUEUEID_SEPARATOR);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            if (2 == kArray.length) {</span>
+<span class="nc" id="L100">                String topic = kArray[0];</span>
+<span class="nc" id="L101">                int queueId = Integer.parseInt(kArray[1]);</span>
+<span class="nc" id="L102">                final long offset = this.brokerController.getMessageStore().getMaxOffsetInQuque(topic, queueId);</span>
+                try {
+<span class="nc" id="L104">                    this.notifyMessageArriving(topic, queueId, offset);</span>
+<span class="nc" id="L105">                } catch (Throwable e) {</span>
+<span class="nc" id="L106">                    log.error(&quot;check hold request failed. topic={}, queueId={}&quot;, topic, queueId, e);</span>
+<span class="nc" id="L107">                }</span>
+            }
+<span class="nc" id="L109">        }</span>
+<span class="fc" id="L110">    }</span>
+
+    public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset) {
+<span class="nc" id="L113">        notifyMessageArriving(topic, queueId, maxOffset, null);</span>
+<span class="nc" id="L114">    }</span>
+
+    public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset, final Long tagsCode) {
+<span class="nc" id="L117">        String key = this.buildKey(topic, queueId);</span>
+<span class="nc" id="L118">        ManyPullRequest mpr = this.pullRequestTable.get(key);</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (mpr != null) {</span>
+<span class="nc" id="L120">            List&lt;PullRequest&gt; requestList = mpr.cloneListAndClear();</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">            if (requestList != null) {</span>
+<span class="nc" id="L122">                List&lt;PullRequest&gt; replayList = new ArrayList&lt;PullRequest&gt;();</span>
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">                for (PullRequest request : requestList) {</span>
+<span class="nc" id="L125">                    long newestOffset = maxOffset;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">                    if (newestOffset &lt;= request.getPullFromThisOffset()) {</span>
+<span class="nc" id="L127">                        newestOffset = this.brokerController.getMessageStore().getMaxOffsetInQuque(topic, queueId);</span>
+                    }
+
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                    if (newestOffset &gt; request.getPullFromThisOffset()) {</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                        if (this.messageFilter.isMessageMatched(request.getSubscriptionData(), tagsCode)) {</span>
+                            try {
+<span class="nc" id="L133">                                this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),</span>
+<span class="nc" id="L134">                                    request.getRequestCommand());</span>
+<span class="nc" id="L135">                            } catch (Throwable e) {</span>
+<span class="nc" id="L136">                                log.error(&quot;execute request when wakeup failed.&quot;, e);</span>
+<span class="nc" id="L137">                            }</span>
+<span class="nc" id="L138">                            continue;</span>
+                        }
+                    }
+
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                    if (System.currentTimeMillis() &gt;= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {</span>
+                        try {
+<span class="nc" id="L144">                            this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),</span>
+<span class="nc" id="L145">                                request.getRequestCommand());</span>
+<span class="nc" id="L146">                        } catch (Throwable e) {</span>
+<span class="nc" id="L147">                            log.error(&quot;execute request when wakeup failed.&quot;, e);</span>
+<span class="nc" id="L148">                        }</span>
+<span class="nc" id="L149">                        continue;</span>
+                    }
+
+<span class="nc" id="L152">                    replayList.add(request);</span>
+<span class="nc" id="L153">                }</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                if (!replayList.isEmpty()) {</span>
+<span class="nc" id="L156">                    mpr.addPullRequest(replayList);</span>
+                }
+            }
+        }
+<span class="nc" id="L160">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

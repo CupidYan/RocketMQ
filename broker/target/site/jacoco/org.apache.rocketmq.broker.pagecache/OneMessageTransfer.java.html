@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OneMessageTransfer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.pagecache</a> &gt; <span class="el_source">OneMessageTransfer.java</span></div><h1>OneMessageTransfer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.pagecache;
+
+import io.netty.channel.FileRegion;
+import io.netty.util.AbstractReferenceCounted;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.WritableByteChannel;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
+
+public class OneMessageTransfer extends AbstractReferenceCounted implements FileRegion {
+    private final ByteBuffer byteBufferHeader;
+    private final SelectMappedBufferResult selectMappedBufferResult;
+    private long transfered; // the bytes which was transfered already
+
+<span class="nc" id="L31">    public OneMessageTransfer(ByteBuffer byteBufferHeader, SelectMappedBufferResult selectMappedBufferResult) {</span>
+<span class="nc" id="L32">        this.byteBufferHeader = byteBufferHeader;</span>
+<span class="nc" id="L33">        this.selectMappedBufferResult = selectMappedBufferResult;</span>
+<span class="nc" id="L34">    }</span>
+
+    @Override
+    public long position() {
+<span class="nc" id="L38">        return this.byteBufferHeader.position() + this.selectMappedBufferResult.getByteBuffer().position();</span>
+    }
+
+    @Override
+    public long transfered() {
+<span class="nc" id="L43">        return transfered;</span>
+    }
+
+    @Override
+    public long count() {
+<span class="nc" id="L48">        return this.byteBufferHeader.limit() + this.selectMappedBufferResult.getSize();</span>
+    }
+
+    @Override
+    public long transferTo(WritableByteChannel target, long position) throws IOException {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        if (this.byteBufferHeader.hasRemaining()) {</span>
+<span class="nc" id="L54">            transfered += target.write(this.byteBufferHeader);</span>
+<span class="nc" id="L55">            return transfered;</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        } else if (this.selectMappedBufferResult.getByteBuffer().hasRemaining()) {</span>
+<span class="nc" id="L57">            transfered += target.write(this.selectMappedBufferResult.getByteBuffer());</span>
+<span class="nc" id="L58">            return transfered;</span>
+        }
+
+<span class="nc" id="L61">        return 0;</span>
+    }
+
+    public void close() {
+<span class="nc" id="L65">        this.deallocate();</span>
+<span class="nc" id="L66">    }</span>
+
+    @Override
+    protected void deallocate() {
+<span class="nc" id="L70">        this.selectMappedBufferResult.release();</span>
+<span class="nc" id="L71">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

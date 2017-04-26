@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BrokerOuterAPI.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.out</a> &gt; <span class="el_source">BrokerOuterAPI.java</span></div><h1>BrokerOuterAPI.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.out;
+
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.namesrv.RegisterBrokerResult;
+import org.apache.rocketmq.common.namesrv.TopAddressing;
+import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.body.ConsumerOffsetSerializeWrapper;
+import org.apache.rocketmq.common.protocol.body.KVTable;
+import org.apache.rocketmq.common.protocol.body.RegisterBrokerBody;
+import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
+import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
+import org.apache.rocketmq.common.protocol.header.namesrv.RegisterBrokerRequestHeader;
+import org.apache.rocketmq.common.protocol.header.namesrv.RegisterBrokerResponseHeader;
+import org.apache.rocketmq.common.protocol.header.namesrv.UnRegisterBrokerRequestHeader;
+import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.RemotingClient;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.rocketmq.remoting.exception.RemotingConnectException;
+import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
+import org.apache.rocketmq.remoting.netty.NettyClientConfig;
+import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">public class BrokerOuterAPI {</span>
+<span class="fc" id="L51">    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+    private final RemotingClient remotingClient;
+<span class="fc" id="L53">    private final TopAddressing topAddressing = new TopAddressing(MixAll.WS_ADDR);</span>
+<span class="fc" id="L54">    private String nameSrvAddr = null;</span>
+
+    public BrokerOuterAPI(final NettyClientConfig nettyClientConfig) {
+<span class="fc" id="L57">        this(nettyClientConfig, null);</span>
+<span class="fc" id="L58">    }</span>
+
+<span class="fc" id="L60">    public BrokerOuterAPI(final NettyClientConfig nettyClientConfig, RPCHook rpcHook) {</span>
+<span class="fc" id="L61">        this.remotingClient = new NettyRemotingClient(nettyClientConfig);</span>
+<span class="fc" id="L62">        this.remotingClient.registerRPCHook(rpcHook);</span>
+<span class="fc" id="L63">    }</span>
+
+    public void start() {
+<span class="fc" id="L66">        this.remotingClient.start();</span>
+<span class="fc" id="L67">    }</span>
+
+    public void shutdown() {
+<span class="fc" id="L70">        this.remotingClient.shutdown();</span>
+<span class="fc" id="L71">    }</span>
+
+    public String fetchNameServerAddr() {
+        try {
+<span class="nc" id="L75">            String addrs = this.topAddressing.fetchNSAddr();</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            if (addrs != null) {</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">                if (!addrs.equals(this.nameSrvAddr)) {</span>
+<span class="nc" id="L78">                    log.info(&quot;name server address changed, old: {} new: {}&quot;, this.nameSrvAddr, addrs);</span>
+<span class="nc" id="L79">                    this.updateNameServerAddressList(addrs);</span>
+<span class="nc" id="L80">                    this.nameSrvAddr = addrs;</span>
+<span class="nc" id="L81">                    return nameSrvAddr;</span>
+                }
+            }
+<span class="nc" id="L84">        } catch (Exception e) {</span>
+<span class="nc" id="L85">            log.error(&quot;fetchNameServerAddr Exception&quot;, e);</span>
+<span class="nc" id="L86">        }</span>
+<span class="nc" id="L87">        return nameSrvAddr;</span>
+    }
+
+    public void updateNameServerAddressList(final String addrs) {
+<span class="nc" id="L91">        List&lt;String&gt; lst = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L92">        String[] addrArray = addrs.split(&quot;;&quot;);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (String addr : addrArray) {</span>
+<span class="nc" id="L94">            lst.add(addr);</span>
+        }
+
+<span class="nc" id="L97">        this.remotingClient.updateNameServerAddressList(lst);</span>
+<span class="nc" id="L98">    }</span>
+
+    public RegisterBrokerResult registerBrokerAll(
+        final String clusterName,
+        final String brokerAddr,
+        final String brokerName,
+        final long brokerId,
+        final String haServerAddr,
+        final TopicConfigSerializeWrapper topicConfigWrapper,
+        final List&lt;String&gt; filterServerList,
+        final boolean oneway,
+        final int timeoutMills) {
+<span class="fc" id="L110">        RegisterBrokerResult registerBrokerResult = null;</span>
+
+<span class="fc" id="L112">        List&lt;String&gt; nameServerAddressList = this.remotingClient.getNameServerAddressList();</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (nameServerAddressList != null) {</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            for (String namesrvAddr : nameServerAddressList) {</span>
+                try {
+<span class="nc" id="L116">                    RegisterBrokerResult result = this.registerBroker(namesrvAddr, clusterName, brokerAddr, brokerName, brokerId,</span>
+                        haServerAddr, topicConfigWrapper, filterServerList, oneway, timeoutMills);
+<span class="nc bnc" id="L118" title="All 2 branches missed.">                    if (result != null) {</span>
+<span class="nc" id="L119">                        registerBrokerResult = result;</span>
+                    }
+
+<span class="nc" id="L122">                    log.info(&quot;register broker to name server {} OK&quot;, namesrvAddr);</span>
+<span class="nc" id="L123">                } catch (Exception e) {</span>
+<span class="nc" id="L124">                    log.warn(&quot;registerBroker Exception, {}&quot;, namesrvAddr, e);</span>
+<span class="nc" id="L125">                }</span>
+<span class="nc" id="L126">            }</span>
+        }
+
+<span class="fc" id="L129">        return registerBrokerResult;</span>
+    }
+
+    private RegisterBrokerResult registerBroker(
+        final String namesrvAddr,
+        final String clusterName,
+        final String brokerAddr,
+        final String brokerName,
+        final long brokerId,
+        final String haServerAddr,
+        final TopicConfigSerializeWrapper topicConfigWrapper,
+        final List&lt;String&gt; filterServerList,
+        final boolean oneway,
+        final int timeoutMills
+    ) throws RemotingCommandException, MQBrokerException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
+        InterruptedException {
+<span class="nc" id="L145">        RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();</span>
+<span class="nc" id="L146">        requestHeader.setBrokerAddr(brokerAddr);</span>
+<span class="nc" id="L147">        requestHeader.setBrokerId(brokerId);</span>
+<span class="nc" id="L148">        requestHeader.setBrokerName(brokerName);</span>
+<span class="nc" id="L149">        requestHeader.setClusterName(clusterName);</span>
+<span class="nc" id="L150">        requestHeader.setHaServerAddr(haServerAddr);</span>
+<span class="nc" id="L151">        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.REGISTER_BROKER, requestHeader);</span>
+
+<span class="nc" id="L153">        RegisterBrokerBody requestBody = new RegisterBrokerBody();</span>
+<span class="nc" id="L154">        requestBody.setTopicConfigSerializeWrapper(topicConfigWrapper);</span>
+<span class="nc" id="L155">        requestBody.setFilterServerList(filterServerList);</span>
+<span class="nc" id="L156">        request.setBody(requestBody.encode());</span>
+
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (oneway) {</span>
+            try {
+<span class="nc" id="L160">                this.remotingClient.invokeOneway(namesrvAddr, request, timeoutMills);</span>
+<span class="nc" id="L161">            } catch (RemotingTooMuchRequestException e) {</span>
+                // Ignore
+<span class="nc" id="L163">            }</span>
+<span class="nc" id="L164">            return null;</span>
+        }
+
+<span class="nc" id="L167">        RemotingCommand response = this.remotingClient.invokeSync(namesrvAddr, request, timeoutMills);</span>
+<span class="nc bnc" id="L168" title="All 4 branches missed.">        assert response != null;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        switch (response.getCode()) {</span>
+            case ResponseCode.SUCCESS: {
+<span class="nc" id="L171">                RegisterBrokerResponseHeader responseHeader =</span>
+<span class="nc" id="L172">                    (RegisterBrokerResponseHeader) response.decodeCommandCustomHeader(RegisterBrokerResponseHeader.class);</span>
+<span class="nc" id="L173">                RegisterBrokerResult result = new RegisterBrokerResult();</span>
+<span class="nc" id="L174">                result.setMasterAddr(responseHeader.getMasterAddr());</span>
+<span class="nc" id="L175">                result.setHaServerAddr(responseHeader.getHaServerAddr());</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                if (response.getBody() != null) {</span>
+<span class="nc" id="L177">                    result.setKvTable(KVTable.decode(response.getBody(), KVTable.class));</span>
+                }
+<span class="nc" id="L179">                return result;</span>
+            }
+            default:
+                break;
+        }
+
+<span class="nc" id="L185">        throw new MQBrokerException(response.getCode(), response.getRemark());</span>
+    }
+
+    public void unregisterBrokerAll(
+        final String clusterName,
+        final String brokerAddr,
+        final String brokerName,
+        final long brokerId
+    ) {
+<span class="fc" id="L194">        List&lt;String&gt; nameServerAddressList = this.remotingClient.getNameServerAddressList();</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        if (nameServerAddressList != null) {</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">            for (String namesrvAddr : nameServerAddressList) {</span>
+                try {
+<span class="nc" id="L198">                    this.unregisterBroker(namesrvAddr, clusterName, brokerAddr, brokerName, brokerId);</span>
+<span class="nc" id="L199">                    log.info(&quot;unregisterBroker OK, NamesrvAddr: {}&quot;, namesrvAddr);</span>
+<span class="nc" id="L200">                } catch (Exception e) {</span>
+<span class="nc" id="L201">                    log.warn(&quot;unregisterBroker Exception, {}&quot;, namesrvAddr, e);</span>
+<span class="nc" id="L202">                }</span>
+<span class="nc" id="L203">            }</span>
+        }
+<span class="fc" id="L205">    }</span>
+
+    public void unregisterBroker(
+        final String namesrvAddr,
+        final String clusterName,
+        final String brokerAddr,
+        final String brokerName,
+        final long brokerId
+    ) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
+<span class="nc" id="L214">        UnRegisterBrokerRequestHeader requestHeader = new UnRegisterBrokerRequestHeader();</span>
+<span class="nc" id="L215">        requestHeader.setBrokerAddr(brokerAddr);</span>
+<span class="nc" id="L216">        requestHeader.setBrokerId(brokerId);</span>
+<span class="nc" id="L217">        requestHeader.setBrokerName(brokerName);</span>
+<span class="nc" id="L218">        requestHeader.setClusterName(clusterName);</span>
+<span class="nc" id="L219">        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.UNREGISTER_BROKER, requestHeader);</span>
+
+<span class="nc" id="L221">        RemotingCommand response = this.remotingClient.invokeSync(namesrvAddr, request, 3000);</span>
+<span class="nc bnc" id="L222" title="All 4 branches missed.">        assert response != null;</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        switch (response.getCode()) {</span>
+            case ResponseCode.SUCCESS: {
+<span class="nc" id="L225">                return;</span>
+            }
+            default:
+                break;
+        }
+
+<span class="nc" id="L231">        throw new MQBrokerException(response.getCode(), response.getRemark());</span>
+    }
+
+    public TopicConfigSerializeWrapper getAllTopicConfig(final String addr) throws RemotingConnectException, RemotingSendRequestException,
+        RemotingTimeoutException, InterruptedException, MQBrokerException {
+<span class="nc" id="L236">        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_TOPIC_CONFIG, null);</span>
+
+<span class="nc" id="L238">        RemotingCommand response = this.remotingClient.invokeSync(MixAll.brokerVIPChannel(true, addr), request, 3000);</span>
+<span class="nc bnc" id="L239" title="All 4 branches missed.">        assert response != null;</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        switch (response.getCode()) {</span>
+            case ResponseCode.SUCCESS: {
+<span class="nc" id="L242">                return TopicConfigSerializeWrapper.decode(response.getBody(), TopicConfigSerializeWrapper.class);</span>
+            }
+            default:
+                break;
+        }
+
+<span class="nc" id="L248">        throw new MQBrokerException(response.getCode(), response.getRemark());</span>
+    }
+
+    public ConsumerOffsetSerializeWrapper getAllConsumerOffset(final String addr) throws InterruptedException, RemotingTimeoutException,
+        RemotingSendRequestException, RemotingConnectException, MQBrokerException {
+<span class="nc" id="L253">        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_CONSUMER_OFFSET, null);</span>
+<span class="nc" id="L254">        RemotingCommand response = this.remotingClient.invokeSync(addr, request, 3000);</span>
+<span class="nc bnc" id="L255" title="All 4 branches missed.">        assert response != null;</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        switch (response.getCode()) {</span>
+            case ResponseCode.SUCCESS: {
+<span class="nc" id="L258">                return ConsumerOffsetSerializeWrapper.decode(response.getBody(), ConsumerOffsetSerializeWrapper.class);</span>
+            }
+            default:
+                break;
+        }
+
+<span class="nc" id="L264">        throw new MQBrokerException(response.getCode(), response.getRemark());</span>
+    }
+
+    public String getAllDelayOffset(final String addr) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException,
+        RemotingConnectException, MQBrokerException, UnsupportedEncodingException {
+<span class="nc" id="L269">        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_DELAY_OFFSET, null);</span>
+<span class="nc" id="L270">        RemotingCommand response = this.remotingClient.invokeSync(addr, request, 3000);</span>
+<span class="nc bnc" id="L271" title="All 4 branches missed.">        assert response != null;</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        switch (response.getCode()) {</span>
+            case ResponseCode.SUCCESS: {
+<span class="nc" id="L274">                return new String(response.getBody(), MixAll.DEFAULT_CHARSET);</span>
+            }
+            default:
+                break;
+        }
+
+<span class="nc" id="L280">        throw new MQBrokerException(response.getCode(), response.getRemark());</span>
+    }
+
+    public SubscriptionGroupWrapper getAllSubscriptionGroupConfig(final String addr) throws InterruptedException, RemotingTimeoutException,
+        RemotingSendRequestException, RemotingConnectException, MQBrokerException {
+<span class="nc" id="L285">        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG, null);</span>
+<span class="nc" id="L286">        RemotingCommand response = this.remotingClient.invokeSync(addr, request, 3000);</span>
+<span class="nc bnc" id="L287" title="All 4 branches missed.">        assert response != null;</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        switch (response.getCode()) {</span>
+            case ResponseCode.SUCCESS: {
+<span class="nc" id="L290">                return SubscriptionGroupWrapper.decode(response.getBody(), SubscriptionGroupWrapper.class);</span>
+            }
+            default:
+                break;
+        }
+
+<span class="nc" id="L296">        throw new MQBrokerException(response.getCode(), response.getRemark());</span>
+    }
+
+    public void registerRPCHook(RPCHook rpcHook) {
+<span class="nc" id="L300">        remotingClient.registerRPCHook(rpcHook);</span>
+<span class="nc" id="L301">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

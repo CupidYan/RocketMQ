@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NamesrvController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-namesrv 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.namesrv</a> &gt; <span class="el_source">NamesrvController.java</span></div><h1>NamesrvController.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.namesrv;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import org.apache.rocketmq.common.Configuration;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.namesrv.NamesrvConfig;
+import org.apache.rocketmq.namesrv.kvconfig.KVConfigManager;
+import org.apache.rocketmq.namesrv.processor.ClusterTestRequestProcessor;
+import org.apache.rocketmq.namesrv.processor.DefaultRequestProcessor;
+import org.apache.rocketmq.namesrv.routeinfo.BrokerHousekeepingService;
+import org.apache.rocketmq.namesrv.routeinfo.RouteInfoManager;
+import org.apache.rocketmq.remoting.RemotingServer;
+import org.apache.rocketmq.remoting.netty.NettyRemotingServer;
+import org.apache.rocketmq.remoting.netty.NettyServerConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class NamesrvController {
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);</span>
+
+    private final NamesrvConfig namesrvConfig;
+
+    private final NettyServerConfig nettyServerConfig;
+
+<span class="fc" id="L45">    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(</span>
+        &quot;NSScheduledThread&quot;));
+    private final KVConfigManager kvConfigManager;
+    private final RouteInfoManager routeInfoManager;
+
+    private RemotingServer remotingServer;
+
+    private BrokerHousekeepingService brokerHousekeepingService;
+
+    private ExecutorService remotingExecutor;
+
+    private Configuration configuration;
+
+<span class="fc" id="L58">    public NamesrvController(NamesrvConfig namesrvConfig, NettyServerConfig nettyServerConfig) {</span>
+<span class="fc" id="L59">        this.namesrvConfig = namesrvConfig;</span>
+<span class="fc" id="L60">        this.nettyServerConfig = nettyServerConfig;</span>
+<span class="fc" id="L61">        this.kvConfigManager = new KVConfigManager(this);</span>
+<span class="fc" id="L62">        this.routeInfoManager = new RouteInfoManager();</span>
+<span class="fc" id="L63">        this.brokerHousekeepingService = new BrokerHousekeepingService(this);</span>
+<span class="fc" id="L64">        this.configuration = new Configuration(</span>
+            log,
+            this.namesrvConfig, this.nettyServerConfig
+        );
+<span class="fc" id="L68">        this.configuration.setStorePathFromConfig(this.namesrvConfig, &quot;configStorePath&quot;);</span>
+<span class="fc" id="L69">    }</span>
+
+    public boolean initialize() {
+
+<span class="fc" id="L73">        this.kvConfigManager.load();</span>
+
+<span class="fc" id="L75">        this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);</span>
+
+<span class="fc" id="L77">        this.remotingExecutor =</span>
+<span class="fc" id="L78">            Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl(&quot;RemotingExecutorThread_&quot;));</span>
+
+<span class="fc" id="L80">        this.registerProcessor();</span>
+
+<span class="fc" id="L82">        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="nc" id="L86">                NamesrvController.this.routeInfoManager.scanNotActiveBroker();</span>
+<span class="nc" id="L87">            }</span>
+        }, 5, 10, TimeUnit.SECONDS);
+
+<span class="fc" id="L90">        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+            @Override
+            public void run() {
+<span class="nc" id="L94">                NamesrvController.this.kvConfigManager.printAllPeriodically();</span>
+<span class="nc" id="L95">            }</span>
+        }, 1, 10, TimeUnit.MINUTES);
+
+<span class="fc" id="L98">        return true;</span>
+    }
+
+    private void registerProcessor() {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (namesrvConfig.isClusterTest()) {</span>
+
+<span class="nc" id="L104">            this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()),</span>
+                this.remotingExecutor);
+        } else {
+
+<span class="fc" id="L108">            this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this), this.remotingExecutor);</span>
+        }
+<span class="fc" id="L110">    }</span>
+
+    public void start() throws Exception {
+<span class="fc" id="L113">        this.remotingServer.start();</span>
+<span class="fc" id="L114">    }</span>
+
+    public void shutdown() {
+<span class="fc" id="L117">        this.remotingServer.shutdown();</span>
+<span class="fc" id="L118">        this.remotingExecutor.shutdown();</span>
+<span class="fc" id="L119">        this.scheduledExecutorService.shutdown();</span>
+<span class="fc" id="L120">    }</span>
+
+    public NamesrvConfig getNamesrvConfig() {
+<span class="fc" id="L123">        return namesrvConfig;</span>
+    }
+
+    public NettyServerConfig getNettyServerConfig() {
+<span class="nc" id="L127">        return nettyServerConfig;</span>
+    }
+
+    public KVConfigManager getKvConfigManager() {
+<span class="fc" id="L131">        return kvConfigManager;</span>
+    }
+
+    public RouteInfoManager getRouteInfoManager() {
+<span class="fc" id="L135">        return routeInfoManager;</span>
+    }
+
+    public RemotingServer getRemotingServer() {
+<span class="nc" id="L139">        return remotingServer;</span>
+    }
+
+    public void setRemotingServer(RemotingServer remotingServer) {
+<span class="nc" id="L143">        this.remotingServer = remotingServer;</span>
+<span class="nc" id="L144">    }</span>
+
+    public Configuration getConfiguration() {
+<span class="nc" id="L147">        return configuration;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

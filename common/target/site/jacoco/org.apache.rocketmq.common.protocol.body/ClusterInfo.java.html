@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClusterInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.protocol.body</a> &gt; <span class="el_source">ClusterInfo.java</span></div><h1>ClusterInfo.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.common.protocol.body;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Set;
+import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
+
+<span class="nc" id="L27">public class ClusterInfo extends RemotingSerializable {</span>
+    private HashMap&lt;String/* brokerName */, BrokerData&gt; brokerAddrTable;
+    private HashMap&lt;String/* clusterName */, Set&lt;String/* brokerName */&gt;&gt; clusterAddrTable;
+
+    public HashMap&lt;String, BrokerData&gt; getBrokerAddrTable() {
+<span class="nc" id="L32">        return brokerAddrTable;</span>
+    }
+
+    public void setBrokerAddrTable(HashMap&lt;String, BrokerData&gt; brokerAddrTable) {
+<span class="nc" id="L36">        this.brokerAddrTable = brokerAddrTable;</span>
+<span class="nc" id="L37">    }</span>
+
+    public HashMap&lt;String, Set&lt;String&gt;&gt; getClusterAddrTable() {
+<span class="nc" id="L40">        return clusterAddrTable;</span>
+    }
+
+    public void setClusterAddrTable(HashMap&lt;String, Set&lt;String&gt;&gt; clusterAddrTable) {
+<span class="nc" id="L44">        this.clusterAddrTable = clusterAddrTable;</span>
+<span class="nc" id="L45">    }</span>
+
+    public String[] retrieveAllAddrByCluster(String cluster) {
+<span class="nc" id="L48">        List&lt;String&gt; addrs = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        if (clusterAddrTable.containsKey(cluster)) {</span>
+<span class="nc" id="L50">            Set&lt;String&gt; brokerNames = clusterAddrTable.get(cluster);</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">            for (String brokerName : brokerNames) {</span>
+<span class="nc" id="L52">                BrokerData brokerData = brokerAddrTable.get(brokerName);</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">                if (null != brokerData) {</span>
+<span class="nc" id="L54">                    addrs.addAll(brokerData.getBrokerAddrs().values());</span>
+                }
+<span class="nc" id="L56">            }</span>
+        }
+
+<span class="nc" id="L59">        return addrs.toArray(new String[] {});</span>
+    }
+
+    public String[] retrieveAllClusterNames() {
+<span class="nc" id="L63">        return clusterAddrTable.keySet().toArray(new String[] {});</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

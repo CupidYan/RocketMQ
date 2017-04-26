@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TopicConfigManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.topic</a> &gt; <span class="el_source">TopicConfigManager.java</span></div><h1>TopicConfigManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.topic;
+
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.broker.BrokerPathConfigHelper;
+import org.apache.rocketmq.common.ConfigManager;
+import org.apache.rocketmq.common.DataVersion;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.protocol.body.KVTable;
+import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
+import org.apache.rocketmq.common.sysflag.TopicSysFlag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class TopicConfigManager extends ConfigManager {
+<span class="fc" id="L43">    private static final Logger LOG = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+    private static final long LOCK_TIMEOUT_MILLIS = 3000;
+<span class="pc" id="L45">    private transient final Lock lockTopicConfigTable = new ReentrantLock();</span>
+
+<span class="pc" id="L47">    private final ConcurrentHashMap&lt;String, TopicConfig&gt; topicConfigTable =</span>
+        new ConcurrentHashMap&lt;String, TopicConfig&gt;(1024);
+<span class="pc" id="L49">    private final DataVersion dataVersion = new DataVersion();</span>
+<span class="pc" id="L50">    private final Set&lt;String&gt; systemTopicList = new HashSet&lt;String&gt;();</span>
+    private transient BrokerController brokerController;
+
+<span class="nc" id="L53">    public TopicConfigManager() {</span>
+<span class="nc" id="L54">    }</span>
+
+<span class="fc" id="L56">    public TopicConfigManager(BrokerController brokerController) {</span>
+<span class="fc" id="L57">        this.brokerController = brokerController;</span>
+        {
+            // MixAll.SELF_TEST_TOPIC
+<span class="fc" id="L60">            String topic = MixAll.SELF_TEST_TOPIC;</span>
+<span class="fc" id="L61">            TopicConfig topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L62">            this.systemTopicList.add(topic);</span>
+<span class="fc" id="L63">            topicConfig.setReadQueueNums(1);</span>
+<span class="fc" id="L64">            topicConfig.setWriteQueueNums(1);</span>
+<span class="fc" id="L65">            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+        }
+        {
+            // MixAll.DEFAULT_TOPIC
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {</span>
+<span class="fc" id="L70">                String topic = MixAll.DEFAULT_TOPIC;</span>
+<span class="fc" id="L71">                TopicConfig topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L72">                this.systemTopicList.add(topic);</span>
+<span class="fc" id="L73">                topicConfig.setReadQueueNums(this.brokerController.getBrokerConfig()</span>
+<span class="fc" id="L74">                    .getDefaultTopicQueueNums());</span>
+<span class="fc" id="L75">                topicConfig.setWriteQueueNums(this.brokerController.getBrokerConfig()</span>
+<span class="fc" id="L76">                    .getDefaultTopicQueueNums());</span>
+<span class="fc" id="L77">                int perm = PermName.PERM_INHERIT | PermName.PERM_READ | PermName.PERM_WRITE;</span>
+<span class="fc" id="L78">                topicConfig.setPerm(perm);</span>
+<span class="fc" id="L79">                this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+            }
+        }
+        {
+            // MixAll.BENCHMARK_TOPIC
+<span class="fc" id="L84">            String topic = MixAll.BENCHMARK_TOPIC;</span>
+<span class="fc" id="L85">            TopicConfig topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L86">            this.systemTopicList.add(topic);</span>
+<span class="fc" id="L87">            topicConfig.setReadQueueNums(1024);</span>
+<span class="fc" id="L88">            topicConfig.setWriteQueueNums(1024);</span>
+<span class="fc" id="L89">            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+        }
+        {
+
+<span class="fc" id="L93">            String topic = this.brokerController.getBrokerConfig().getBrokerClusterName();</span>
+<span class="fc" id="L94">            TopicConfig topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L95">            this.systemTopicList.add(topic);</span>
+<span class="fc" id="L96">            int perm = PermName.PERM_INHERIT;</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (this.brokerController.getBrokerConfig().isClusterTopicEnable()) {</span>
+<span class="fc" id="L98">                perm |= PermName.PERM_READ | PermName.PERM_WRITE;</span>
+            }
+<span class="fc" id="L100">            topicConfig.setPerm(perm);</span>
+<span class="fc" id="L101">            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+        }
+        {
+
+<span class="fc" id="L105">            String topic = this.brokerController.getBrokerConfig().getBrokerName();</span>
+<span class="fc" id="L106">            TopicConfig topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L107">            this.systemTopicList.add(topic);</span>
+<span class="fc" id="L108">            int perm = PermName.PERM_INHERIT;</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (this.brokerController.getBrokerConfig().isBrokerTopicEnable()) {</span>
+<span class="fc" id="L110">                perm |= PermName.PERM_READ | PermName.PERM_WRITE;</span>
+            }
+<span class="fc" id="L112">            topicConfig.setReadQueueNums(1);</span>
+<span class="fc" id="L113">            topicConfig.setWriteQueueNums(1);</span>
+<span class="fc" id="L114">            topicConfig.setPerm(perm);</span>
+<span class="fc" id="L115">            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+        }
+        {
+            // MixAll.OFFSET_MOVED_EVENT
+<span class="fc" id="L119">            String topic = MixAll.OFFSET_MOVED_EVENT;</span>
+<span class="fc" id="L120">            TopicConfig topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L121">            this.systemTopicList.add(topic);</span>
+<span class="fc" id="L122">            topicConfig.setReadQueueNums(1);</span>
+<span class="fc" id="L123">            topicConfig.setWriteQueueNums(1);</span>
+<span class="fc" id="L124">            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+        }
+<span class="fc" id="L126">    }</span>
+
+    public boolean isSystemTopic(final String topic) {
+<span class="nc" id="L129">        return this.systemTopicList.contains(topic);</span>
+    }
+
+    public Set&lt;String&gt; getSystemTopic() {
+<span class="nc" id="L133">        return this.systemTopicList;</span>
+    }
+
+    public boolean isTopicCanSendMessage(final String topic) {
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        return !topic.equals(MixAll.DEFAULT_TOPIC);</span>
+    }
+
+    public TopicConfig selectTopicConfig(final String topic) {
+<span class="fc" id="L141">        return this.topicConfigTable.get(topic);</span>
+    }
+
+    public TopicConfig createTopicInSendMessageMethod(final String topic, final String defaultTopic,
+        final String remoteAddress, final int clientDefaultTopicQueueNums, final int topicSysFlag) {
+<span class="fc" id="L146">        TopicConfig topicConfig = null;</span>
+<span class="fc" id="L147">        boolean createNew = false;</span>
+
+        try {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                try {
+<span class="fc" id="L152">                    topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                    if (topicConfig != null)</span>
+<span class="nc" id="L154">                        return topicConfig;</span>
+
+<span class="fc" id="L156">                    TopicConfig defaultTopicConfig = this.topicConfigTable.get(defaultTopic);</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">                    if (defaultTopicConfig != null) {</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                        if (defaultTopic.equals(MixAll.DEFAULT_TOPIC)) {</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">                            if (!this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {</span>
+<span class="nc" id="L160">                                defaultTopicConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);</span>
+                            }
+                        }
+
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                        if (PermName.isInherited(defaultTopicConfig.getPerm())) {</span>
+<span class="fc" id="L165">                            topicConfig = new TopicConfig(topic);</span>
+
+<span class="fc" id="L167">                            int queueNums =</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                                clientDefaultTopicQueueNums &gt; defaultTopicConfig.getWriteQueueNums() ? defaultTopicConfig</span>
+<span class="pc" id="L169">                                    .getWriteQueueNums() : clientDefaultTopicQueueNums;</span>
+
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                            if (queueNums &lt; 0) {</span>
+<span class="nc" id="L172">                                queueNums = 0;</span>
+                            }
+
+<span class="fc" id="L175">                            topicConfig.setReadQueueNums(queueNums);</span>
+<span class="fc" id="L176">                            topicConfig.setWriteQueueNums(queueNums);</span>
+<span class="fc" id="L177">                            int perm = defaultTopicConfig.getPerm();</span>
+<span class="fc" id="L178">                            perm &amp;= ~PermName.PERM_INHERIT;</span>
+<span class="fc" id="L179">                            topicConfig.setPerm(perm);</span>
+<span class="fc" id="L180">                            topicConfig.setTopicSysFlag(topicSysFlag);</span>
+<span class="fc" id="L181">                            topicConfig.setTopicFilterType(defaultTopicConfig.getTopicFilterType());</span>
+<span class="fc" id="L182">                        } else {</span>
+<span class="nc" id="L183">                            LOG.warn(&quot;Create new topic failed, because the default topic[{}] has no perm [{}] producer:[{}]&quot;,</span>
+<span class="nc" id="L184">                                    defaultTopic, defaultTopicConfig.getPerm(), remoteAddress);</span>
+                        }
+                    } else {
+<span class="nc" id="L187">                        LOG.warn(&quot;Create new topic failed, because the default topic[{}] not exist. producer:[{}]&quot;, defaultTopic, remoteAddress);</span>
+                    }
+
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                    if (topicConfig != null) {</span>
+<span class="fc" id="L191">                        LOG.info(&quot;Create new topic by default topic:[{}] config:[{}] producer:[{}]&quot;, defaultTopic, topicConfig, remoteAddress);</span>
+
+<span class="fc" id="L193">                        this.topicConfigTable.put(topic, topicConfig);</span>
+
+<span class="fc" id="L195">                        this.dataVersion.nextVersion();</span>
+
+<span class="fc" id="L197">                        createNew = true;</span>
+
+<span class="fc" id="L199">                        this.persist();</span>
+                    }
+                } finally {
+<span class="pc" id="L202">                    this.lockTopicConfigTable.unlock();</span>
+<span class="fc" id="L203">                }</span>
+            }
+<span class="nc" id="L205">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L206">            LOG.error(&quot;createTopicInSendMessageMethod exception&quot;, e);</span>
+<span class="fc" id="L207">        }</span>
+
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (createNew) {</span>
+<span class="fc" id="L210">            this.brokerController.registerBrokerAll(false, true);</span>
+        }
+
+<span class="fc" id="L213">        return topicConfig;</span>
+    }
+
+    public TopicConfig createTopicInSendMessageBackMethod(
+        final String topic,
+        final int clientDefaultTopicQueueNums,
+        final int perm,
+        final int topicSysFlag) {
+<span class="fc" id="L221">        TopicConfig topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if (topicConfig != null)</span>
+<span class="nc" id="L223">            return topicConfig;</span>
+
+<span class="fc" id="L225">        boolean createNew = false;</span>
+
+        try {
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                try {
+<span class="fc" id="L230">                    topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    if (topicConfig != null)</span>
+<span class="nc" id="L232">                        return topicConfig;</span>
+
+<span class="fc" id="L234">                    topicConfig = new TopicConfig(topic);</span>
+<span class="fc" id="L235">                    topicConfig.setReadQueueNums(clientDefaultTopicQueueNums);</span>
+<span class="fc" id="L236">                    topicConfig.setWriteQueueNums(clientDefaultTopicQueueNums);</span>
+<span class="fc" id="L237">                    topicConfig.setPerm(perm);</span>
+<span class="fc" id="L238">                    topicConfig.setTopicSysFlag(topicSysFlag);</span>
+
+<span class="fc" id="L240">                    LOG.info(&quot;create new topic {}&quot;, topicConfig);</span>
+<span class="fc" id="L241">                    this.topicConfigTable.put(topic, topicConfig);</span>
+<span class="fc" id="L242">                    createNew = true;</span>
+<span class="fc" id="L243">                    this.dataVersion.nextVersion();</span>
+<span class="fc" id="L244">                    this.persist();</span>
+                } finally {
+<span class="pc" id="L246">                    this.lockTopicConfigTable.unlock();</span>
+<span class="fc" id="L247">                }</span>
+            }
+<span class="nc" id="L249">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L250">            LOG.error(&quot;createTopicInSendMessageBackMethod exception&quot;, e);</span>
+<span class="fc" id="L251">        }</span>
+
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">        if (createNew) {</span>
+<span class="fc" id="L254">            this.brokerController.registerBrokerAll(false, true);</span>
+        }
+
+<span class="fc" id="L257">        return topicConfig;</span>
+    }
+
+    public void updateTopicUnitFlag(final String topic, final boolean unit) {
+
+<span class="nc" id="L262">        TopicConfig topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (topicConfig != null) {</span>
+<span class="nc" id="L264">            int oldTopicSysFlag = topicConfig.getTopicSysFlag();</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            if (unit) {</span>
+<span class="nc" id="L266">                topicConfig.setTopicSysFlag(TopicSysFlag.setUnitFlag(oldTopicSysFlag));</span>
+            } else {
+<span class="nc" id="L268">                topicConfig.setTopicSysFlag(TopicSysFlag.clearUnitFlag(oldTopicSysFlag));</span>
+            }
+
+<span class="nc" id="L271">            LOG.info(&quot;update topic sys flag. oldTopicSysFlag={}, newTopicSysFlag&quot;, oldTopicSysFlag,</span>
+<span class="nc" id="L272">                topicConfig.getTopicSysFlag());</span>
+
+<span class="nc" id="L274">            this.topicConfigTable.put(topic, topicConfig);</span>
+
+<span class="nc" id="L276">            this.dataVersion.nextVersion();</span>
+
+<span class="nc" id="L278">            this.persist();</span>
+<span class="nc" id="L279">            this.brokerController.registerBrokerAll(false, true);</span>
+        }
+<span class="nc" id="L281">    }</span>
+
+    public void updateTopicUnitSubFlag(final String topic, final boolean hasUnitSub) {
+<span class="nc" id="L284">        TopicConfig topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        if (topicConfig != null) {</span>
+<span class="nc" id="L286">            int oldTopicSysFlag = topicConfig.getTopicSysFlag();</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">            if (hasUnitSub) {</span>
+<span class="nc" id="L288">                topicConfig.setTopicSysFlag(TopicSysFlag.setUnitSubFlag(oldTopicSysFlag));</span>
+            }
+
+<span class="nc" id="L291">            LOG.info(&quot;update topic sys flag. oldTopicSysFlag={}, newTopicSysFlag&quot;, oldTopicSysFlag,</span>
+<span class="nc" id="L292">                topicConfig.getTopicSysFlag());</span>
+
+<span class="nc" id="L294">            this.topicConfigTable.put(topic, topicConfig);</span>
+
+<span class="nc" id="L296">            this.dataVersion.nextVersion();</span>
+
+<span class="nc" id="L298">            this.persist();</span>
+<span class="nc" id="L299">            this.brokerController.registerBrokerAll(false, true);</span>
+        }
+<span class="nc" id="L301">    }</span>
+
+    public void updateTopicConfig(final TopicConfig topicConfig) {
+<span class="nc" id="L304">        TopicConfig old = this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (old != null) {</span>
+<span class="nc" id="L306">            LOG.info(&quot;update topic config, old:[{}] new:[{}]&quot;, old, topicConfig);</span>
+        } else {
+<span class="nc" id="L308">            LOG.info(&quot;create new topic [{}]&quot;, topicConfig);</span>
+        }
+
+<span class="nc" id="L311">        this.dataVersion.nextVersion();</span>
+
+<span class="nc" id="L313">        this.persist();</span>
+<span class="nc" id="L314">    }</span>
+
+    public void updateOrderTopicConfig(final KVTable orderKVTableFromNs) {
+
+<span class="nc bnc" id="L318" title="All 4 branches missed.">        if (orderKVTableFromNs != null &amp;&amp; orderKVTableFromNs.getTable() != null) {</span>
+<span class="nc" id="L319">            boolean isChange = false;</span>
+<span class="nc" id="L320">            Set&lt;String&gt; orderTopics = orderKVTableFromNs.getTable().keySet();</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            for (String topic : orderTopics) {</span>
+<span class="nc" id="L322">                TopicConfig topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="nc bnc" id="L323" title="All 4 branches missed.">                if (topicConfig != null &amp;&amp; !topicConfig.isOrder()) {</span>
+<span class="nc" id="L324">                    topicConfig.setOrder(true);</span>
+<span class="nc" id="L325">                    isChange = true;</span>
+<span class="nc" id="L326">                    LOG.info(&quot;update order topic config, topic={}, order={}&quot;, topic, true);</span>
+                }
+<span class="nc" id="L328">            }</span>
+
+<span class="nc bnc" id="L330" title="All 2 branches missed.">            for (Map.Entry&lt;String, TopicConfig&gt; entry : this.topicConfigTable.entrySet()) {</span>
+<span class="nc" id="L331">                String topic = entry.getKey();</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">                if (!orderTopics.contains(topic)) {</span>
+<span class="nc" id="L333">                    TopicConfig topicConfig = entry.getValue();</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">                    if (topicConfig.isOrder()) {</span>
+<span class="nc" id="L335">                        topicConfig.setOrder(false);</span>
+<span class="nc" id="L336">                        isChange = true;</span>
+<span class="nc" id="L337">                        LOG.info(&quot;update order topic config, topic={}, order={}&quot;, topic, false);</span>
+                    }
+                }
+<span class="nc" id="L340">            }</span>
+
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            if (isChange) {</span>
+<span class="nc" id="L343">                this.dataVersion.nextVersion();</span>
+<span class="nc" id="L344">                this.persist();</span>
+            }
+        }
+<span class="nc" id="L347">    }</span>
+
+    public boolean isOrderTopic(final String topic) {
+<span class="nc" id="L350">        TopicConfig topicConfig = this.topicConfigTable.get(topic);</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">        if (topicConfig == null) {</span>
+<span class="nc" id="L352">            return false;</span>
+        } else {
+<span class="nc" id="L354">            return topicConfig.isOrder();</span>
+        }
+    }
+
+    public void deleteTopicConfig(final String topic) {
+<span class="nc" id="L359">        TopicConfig old = this.topicConfigTable.remove(topic);</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if (old != null) {</span>
+<span class="nc" id="L361">            LOG.info(&quot;Delete topic config OK, topic:{}&quot;, old);</span>
+<span class="nc" id="L362">            this.dataVersion.nextVersion();</span>
+<span class="nc" id="L363">            this.persist();</span>
+        } else {
+<span class="nc" id="L365">            LOG.warn(&quot;Delete topic config failed, topic:{} not exist&quot;, topic);</span>
+        }
+<span class="nc" id="L367">    }</span>
+
+    public TopicConfigSerializeWrapper buildTopicConfigSerializeWrapper() {
+<span class="fc" id="L370">        TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();</span>
+<span class="fc" id="L371">        topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);</span>
+<span class="fc" id="L372">        topicConfigSerializeWrapper.setDataVersion(this.dataVersion);</span>
+<span class="fc" id="L373">        return topicConfigSerializeWrapper;</span>
+    }
+
+    @Override
+    public String encode() {
+<span class="nc" id="L378">        return encode(false);</span>
+    }
+
+    @Override
+    public String configFilePath() {
+<span class="fc" id="L383">        return BrokerPathConfigHelper.getTopicConfigPath(this.brokerController.getMessageStoreConfig()</span>
+<span class="fc" id="L384">                .getStorePathRootDir());</span>
+    }
+
+    @Override
+    public void decode(String jsonString) {
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">        if (jsonString != null) {</span>
+<span class="fc" id="L390">            TopicConfigSerializeWrapper topicConfigSerializeWrapper =</span>
+<span class="fc" id="L391">                TopicConfigSerializeWrapper.fromJson(jsonString, TopicConfigSerializeWrapper.class);</span>
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">            if (topicConfigSerializeWrapper != null) {</span>
+<span class="fc" id="L393">                this.topicConfigTable.putAll(topicConfigSerializeWrapper.getTopicConfigTable());</span>
+<span class="fc" id="L394">                this.dataVersion.assignNewOne(topicConfigSerializeWrapper.getDataVersion());</span>
+<span class="fc" id="L395">                this.printLoadDataWhenFirstBoot(topicConfigSerializeWrapper);</span>
+            }
+        }
+<span class="fc" id="L398">    }</span>
+
+    public String encode(final boolean prettyFormat) {
+<span class="fc" id="L401">        TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();</span>
+<span class="fc" id="L402">        topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);</span>
+<span class="fc" id="L403">        topicConfigSerializeWrapper.setDataVersion(this.dataVersion);</span>
+<span class="fc" id="L404">        return topicConfigSerializeWrapper.toJson(prettyFormat);</span>
+    }
+
+    private void printLoadDataWhenFirstBoot(final TopicConfigSerializeWrapper tcs) {
+<span class="fc" id="L408">        Iterator&lt;Entry&lt;String, TopicConfig&gt;&gt; it = tcs.getTopicConfigTable().entrySet().iterator();</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L410">            Entry&lt;String, TopicConfig&gt; next = it.next();</span>
+<span class="fc" id="L411">            LOG.info(&quot;load exist local topic, {}&quot;, next.getValue().toString());</span>
+<span class="fc" id="L412">        }</span>
+<span class="fc" id="L413">    }</span>
+
+    public DataVersion getDataVersion() {
+<span class="nc" id="L416">        return dataVersion;</span>
+    }
+
+    public ConcurrentHashMap&lt;String, TopicConfig&gt; getTopicConfigTable() {
+<span class="fc" id="L420">        return topicConfigTable;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MQAdminImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client.impl</a> &gt; <span class="el_source">MQAdminImpl.java</span></div><h1>MQAdminImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.client.impl;
+
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.impl.factory.MQClientInstance;
+import org.apache.rocketmq.client.impl.producer.TopicPublishInfo;
+import org.apache.rocketmq.client.log.ClientLogger;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.message.MessageClientIDSetter;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageId;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.header.QueryMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.QueryMessageResponseHeader;
+import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.InvokeCallback;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+import org.apache.rocketmq.remoting.netty.ResponseFuture;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.slf4j.Logger;
+
+public class MQAdminImpl {
+
+<span class="fc" id="L59">    private final Logger log = ClientLogger.getLog();</span>
+    private final MQClientInstance mQClientFactory;
+<span class="fc" id="L61">    private long timeoutMillis = 6000;</span>
+
+<span class="fc" id="L63">    public MQAdminImpl(MQClientInstance mQClientFactory) {</span>
+<span class="fc" id="L64">        this.mQClientFactory = mQClientFactory;</span>
+<span class="fc" id="L65">    }</span>
+
+    public long getTimeoutMillis() {
+<span class="nc" id="L68">        return timeoutMillis;</span>
+    }
+
+    public void setTimeoutMillis(long timeoutMillis) {
+<span class="nc" id="L72">        this.timeoutMillis = timeoutMillis;</span>
+<span class="nc" id="L73">    }</span>
+
+    public void createTopic(String key, String newTopic, int queueNum) throws MQClientException {
+<span class="nc" id="L76">        createTopic(key, newTopic, queueNum, 0);</span>
+<span class="nc" id="L77">    }</span>
+
+    public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag) throws MQClientException {
+        try {
+<span class="nc" id="L81">            TopicRouteData topicRouteData = this.mQClientFactory.getMQClientAPIImpl().getTopicRouteInfoFromNameServer(key, timeoutMillis);</span>
+<span class="nc" id="L82">            List&lt;BrokerData&gt; brokerDataList = topicRouteData.getBrokerDatas();</span>
+<span class="nc bnc" id="L83" title="All 4 branches missed.">            if (brokerDataList != null &amp;&amp; !brokerDataList.isEmpty()) {</span>
+<span class="nc" id="L84">                Collections.sort(brokerDataList);</span>
+
+<span class="nc" id="L86">                boolean createOKAtLeastOnce = false;</span>
+<span class="nc" id="L87">                MQClientException exception = null;</span>
+
+<span class="nc" id="L89">                StringBuilder orderTopicString = new StringBuilder();</span>
+
+<span class="nc bnc" id="L91" title="All 2 branches missed.">                for (BrokerData brokerData : brokerDataList) {</span>
+<span class="nc" id="L92">                    String addr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">                    if (addr != null) {</span>
+<span class="nc" id="L94">                        TopicConfig topicConfig = new TopicConfig(newTopic);</span>
+<span class="nc" id="L95">                        topicConfig.setReadQueueNums(queueNum);</span>
+<span class="nc" id="L96">                        topicConfig.setWriteQueueNums(queueNum);</span>
+<span class="nc" id="L97">                        topicConfig.setTopicSysFlag(topicSysFlag);</span>
+
+<span class="nc" id="L99">                        boolean createOK = false;</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">                        for (int i = 0; i &lt; 5; i++) {</span>
+                            try {
+<span class="nc" id="L102">                                this.mQClientFactory.getMQClientAPIImpl().createTopic(addr, key, topicConfig, timeoutMillis);</span>
+<span class="nc" id="L103">                                createOK = true;</span>
+<span class="nc" id="L104">                                createOKAtLeastOnce = true;</span>
+<span class="nc" id="L105">                                break;</span>
+<span class="nc" id="L106">                            } catch (Exception e) {</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                                if (4 == i) {</span>
+<span class="nc" id="L108">                                    exception = new MQClientException(&quot;create topic to broker exception&quot;, e);</span>
+                                }
+                            }
+                        }
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                        if (createOK) {</span>
+<span class="nc" id="L114">                            orderTopicString.append(brokerData.getBrokerName());</span>
+<span class="nc" id="L115">                            orderTopicString.append(&quot;:&quot;);</span>
+<span class="nc" id="L116">                            orderTopicString.append(queueNum);</span>
+<span class="nc" id="L117">                            orderTopicString.append(&quot;;&quot;);</span>
+                        }
+                    }
+<span class="nc" id="L120">                }</span>
+
+<span class="nc bnc" id="L122" title="All 4 branches missed.">                if (exception != null &amp;&amp; !createOKAtLeastOnce) {</span>
+<span class="nc" id="L123">                    throw exception;</span>
+                }
+<span class="nc" id="L125">            } else {</span>
+<span class="nc" id="L126">                throw new MQClientException(&quot;Not found broker, maybe key is wrong&quot;, null);</span>
+            }
+<span class="nc" id="L128">        } catch (Exception e) {</span>
+<span class="nc" id="L129">            throw new MQClientException(&quot;create new topic failed&quot;, e);</span>
+<span class="nc" id="L130">        }</span>
+<span class="nc" id="L131">    }</span>
+
+    public List&lt;MessageQueue&gt; fetchPublishMessageQueues(String topic) throws MQClientException {
+        try {
+<span class="nc" id="L135">            TopicRouteData topicRouteData = this.mQClientFactory.getMQClientAPIImpl().getTopicRouteInfoFromNameServer(topic, timeoutMillis);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">            if (topicRouteData != null) {</span>
+<span class="nc" id="L137">                TopicPublishInfo topicPublishInfo = MQClientInstance.topicRouteData2TopicPublishInfo(topic, topicRouteData);</span>
+<span class="nc bnc" id="L138" title="All 4 branches missed.">                if (topicPublishInfo != null &amp;&amp; topicPublishInfo.ok()) {</span>
+<span class="nc" id="L139">                    return topicPublishInfo.getMessageQueueList();</span>
+                }
+            }
+<span class="nc" id="L142">        } catch (Exception e) {</span>
+<span class="nc" id="L143">            throw new MQClientException(&quot;Can not find Message Queue for this topic, &quot; + topic, e);</span>
+<span class="nc" id="L144">        }</span>
+
+<span class="nc" id="L146">        throw new MQClientException(&quot;Unknow why, Can not find Message Queue for this topic, &quot; + topic, null);</span>
+    }
+
+    public Set&lt;MessageQueue&gt; fetchSubscribeMessageQueues(String topic) throws MQClientException {
+        try {
+<span class="nc" id="L151">            TopicRouteData topicRouteData = this.mQClientFactory.getMQClientAPIImpl().getTopicRouteInfoFromNameServer(topic, timeoutMillis);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            if (topicRouteData != null) {</span>
+<span class="nc" id="L153">                Set&lt;MessageQueue&gt; mqList = MQClientInstance.topicRouteData2TopicSubscribeInfo(topic, topicRouteData);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                if (!mqList.isEmpty()) {</span>
+<span class="nc" id="L155">                    return mqList;</span>
+                } else {
+<span class="nc" id="L157">                    throw new MQClientException(&quot;Can not find Message Queue for this topic, &quot; + topic + &quot; Namesrv return empty&quot;, null);</span>
+                }
+            }
+<span class="nc" id="L160">        } catch (Exception e) {</span>
+<span class="nc" id="L161">            throw new MQClientException(</span>
+<span class="nc" id="L162">                &quot;Can not find Message Queue for this topic, &quot; + topic + FAQUrl.suggestTodo(FAQUrl.MQLIST_NOT_EXIST), //</span>
+                e);
+<span class="nc" id="L164">        }</span>
+
+<span class="nc" id="L166">        throw new MQClientException(&quot;Unknow why, Can not find Message Queue for this topic, &quot; + topic, null);</span>
+    }
+
+    public long searchOffset(MessageQueue mq, long timestamp) throws MQClientException {
+<span class="nc" id="L170">        String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (null == brokerAddr) {</span>
+<span class="nc" id="L172">            this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());</span>
+<span class="nc" id="L173">            brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+        }
+
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (brokerAddr != null) {</span>
+            try {
+<span class="nc" id="L178">                return this.mQClientFactory.getMQClientAPIImpl().searchOffset(brokerAddr, mq.getTopic(), mq.getQueueId(), timestamp,</span>
+                    timeoutMillis);
+<span class="nc" id="L180">            } catch (Exception e) {</span>
+<span class="nc" id="L181">                throw new MQClientException(&quot;Invoke Broker[&quot; + brokerAddr + &quot;] exception&quot;, e);</span>
+            }
+        }
+
+<span class="nc" id="L185">        throw new MQClientException(&quot;The broker[&quot; + mq.getBrokerName() + &quot;] not exist&quot;, null);</span>
+    }
+
+    public long maxOffset(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L189">        String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (null == brokerAddr) {</span>
+<span class="nc" id="L191">            this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());</span>
+<span class="nc" id="L192">            brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+        }
+
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (brokerAddr != null) {</span>
+            try {
+<span class="nc" id="L197">                return this.mQClientFactory.getMQClientAPIImpl().getMaxOffset(brokerAddr, mq.getTopic(), mq.getQueueId(), timeoutMillis);</span>
+<span class="nc" id="L198">            } catch (Exception e) {</span>
+<span class="nc" id="L199">                throw new MQClientException(&quot;Invoke Broker[&quot; + brokerAddr + &quot;] exception&quot;, e);</span>
+            }
+        }
+
+<span class="nc" id="L203">        throw new MQClientException(&quot;The broker[&quot; + mq.getBrokerName() + &quot;] not exist&quot;, null);</span>
+    }
+
+    public long minOffset(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L207">        String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (null == brokerAddr) {</span>
+<span class="nc" id="L209">            this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());</span>
+<span class="nc" id="L210">            brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+        }
+
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (brokerAddr != null) {</span>
+            try {
+<span class="nc" id="L215">                return this.mQClientFactory.getMQClientAPIImpl().getMinOffset(brokerAddr, mq.getTopic(), mq.getQueueId(), timeoutMillis);</span>
+<span class="nc" id="L216">            } catch (Exception e) {</span>
+<span class="nc" id="L217">                throw new MQClientException(&quot;Invoke Broker[&quot; + brokerAddr + &quot;] exception&quot;, e);</span>
+            }
+        }
+
+<span class="nc" id="L221">        throw new MQClientException(&quot;The broker[&quot; + mq.getBrokerName() + &quot;] not exist&quot;, null);</span>
+    }
+
+    public long earliestMsgStoreTime(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L225">        String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (null == brokerAddr) {</span>
+<span class="nc" id="L227">            this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());</span>
+<span class="nc" id="L228">            brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());</span>
+        }
+
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (brokerAddr != null) {</span>
+            try {
+<span class="nc" id="L233">                return this.mQClientFactory.getMQClientAPIImpl().getEarliestMsgStoretime(brokerAddr, mq.getTopic(), mq.getQueueId(),</span>
+                    timeoutMillis);
+<span class="nc" id="L235">            } catch (Exception e) {</span>
+<span class="nc" id="L236">                throw new MQClientException(&quot;Invoke Broker[&quot; + brokerAddr + &quot;] exception&quot;, e);</span>
+            }
+        }
+
+<span class="nc" id="L240">        throw new MQClientException(&quot;The broker[&quot; + mq.getBrokerName() + &quot;] not exist&quot;, null);</span>
+    }
+
+    public MessageExt viewMessage(String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+
+<span class="nc" id="L245">        MessageId messageId = null;</span>
+        try {
+<span class="nc" id="L247">            messageId = MessageDecoder.decodeMessageId(msgId);</span>
+<span class="nc" id="L248">        } catch (Exception e) {</span>
+<span class="nc" id="L249">            throw new MQClientException(ResponseCode.NO_MESSAGE, &quot;query message by id finished, but no message.&quot;);</span>
+<span class="nc" id="L250">        }</span>
+<span class="nc" id="L251">        return this.mQClientFactory.getMQClientAPIImpl().viewMessage(RemotingUtil.socketAddress2String(messageId.getAddress()),</span>
+<span class="nc" id="L252">            messageId.getOffset(), timeoutMillis);</span>
+    }
+
+    public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end) throws MQClientException,
+        InterruptedException {
+<span class="nc" id="L257">        return queryMessage(topic, key, maxNum, begin, end, false);</span>
+    }
+
+    public MessageExt queryMessageByUniqKey(String topic, String uniqKey) throws InterruptedException, MQClientException {
+
+<span class="nc" id="L262">        QueryResult qr = this.queryMessage(topic, uniqKey, 32,</span>
+<span class="nc" id="L263">            MessageClientIDSetter.getNearlyTimeFromID(uniqKey).getTime() - 1000, Long.MAX_VALUE, true);</span>
+<span class="nc bnc" id="L264" title="All 6 branches missed.">        if (qr != null &amp;&amp; qr.getMessageList() != null &amp;&amp; qr.getMessageList().size() &gt; 0) {</span>
+<span class="nc" id="L265">            return qr.getMessageList().get(0);</span>
+        } else {
+<span class="nc" id="L267">            return null;</span>
+        }
+    }
+
+    protected QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end, boolean isUniqKey) throws MQClientException,
+        InterruptedException {
+<span class="nc" id="L273">        TopicRouteData topicRouteData = this.mQClientFactory.getAnExistTopicRouteData(topic);</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (null == topicRouteData) {</span>
+<span class="nc" id="L275">            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);</span>
+<span class="nc" id="L276">            topicRouteData = this.mQClientFactory.getAnExistTopicRouteData(topic);</span>
+        }
+
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (topicRouteData != null) {</span>
+<span class="nc" id="L280">            List&lt;String&gt; brokerAddrs = new LinkedList&lt;String&gt;();</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">            for (BrokerData brokerData : topicRouteData.getBrokerDatas()) {</span>
+<span class="nc" id="L282">                String addr = brokerData.selectBrokerAddr();</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">                if (addr != null) {</span>
+<span class="nc" id="L284">                    brokerAddrs.add(addr);</span>
+                }
+<span class="nc" id="L286">            }</span>
+
+<span class="nc bnc" id="L288" title="All 2 branches missed.">            if (!brokerAddrs.isEmpty()) {</span>
+<span class="nc" id="L289">                final CountDownLatch countDownLatch = new CountDownLatch(brokerAddrs.size());</span>
+<span class="nc" id="L290">                final List&lt;QueryResult&gt; queryResultList = new LinkedList&lt;QueryResult&gt;();</span>
+<span class="nc" id="L291">                final ReadWriteLock lock = new ReentrantReadWriteLock(false);</span>
+
+<span class="nc bnc" id="L293" title="All 2 branches missed.">                for (String addr : brokerAddrs) {</span>
+                    try {
+<span class="nc" id="L295">                        QueryMessageRequestHeader requestHeader = new QueryMessageRequestHeader();</span>
+<span class="nc" id="L296">                        requestHeader.setTopic(topic);</span>
+<span class="nc" id="L297">                        requestHeader.setKey(key);</span>
+<span class="nc" id="L298">                        requestHeader.setMaxNum(maxNum);</span>
+<span class="nc" id="L299">                        requestHeader.setBeginTimestamp(begin);</span>
+<span class="nc" id="L300">                        requestHeader.setEndTimestamp(end);</span>
+
+<span class="nc" id="L302">                        this.mQClientFactory.getMQClientAPIImpl().queryMessage(addr, requestHeader, timeoutMillis * 3,</span>
+<span class="nc" id="L303">                            new InvokeCallback() {</span>
+                                @Override
+                                public void operationComplete(ResponseFuture responseFuture) {
+                                    try {
+<span class="nc" id="L307">                                        RemotingCommand response = responseFuture.getResponseCommand();</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">                                        if (response != null) {</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">                                            switch (response.getCode()) {</span>
+                                                case ResponseCode.SUCCESS: {
+<span class="nc" id="L311">                                                    QueryMessageResponseHeader responseHeader = null;</span>
+                                                    try {
+<span class="nc" id="L313">                                                        responseHeader =</span>
+                                                            (QueryMessageResponseHeader) response
+<span class="nc" id="L315">                                                                .decodeCommandCustomHeader(QueryMessageResponseHeader.class);</span>
+<span class="nc" id="L316">                                                    } catch (RemotingCommandException e) {</span>
+<span class="nc" id="L317">                                                        log.error(&quot;decodeCommandCustomHeader exception&quot;, e);</span>
+<span class="nc" id="L318">                                                        return;</span>
+<span class="nc" id="L319">                                                    }</span>
+
+<span class="nc" id="L321">                                                    List&lt;MessageExt&gt; wrappers =</span>
+<span class="nc" id="L322">                                                        MessageDecoder.decodes(ByteBuffer.wrap(response.getBody()), true);</span>
+
+<span class="nc" id="L324">                                                    QueryResult qr = new QueryResult(responseHeader.getIndexLastUpdateTimestamp(), wrappers);</span>
+                                                    try {
+<span class="nc" id="L326">                                                        lock.writeLock().lock();</span>
+<span class="nc" id="L327">                                                        queryResultList.add(qr);</span>
+                                                    } finally {
+<span class="nc" id="L329">                                                        lock.writeLock().unlock();</span>
+<span class="nc" id="L330">                                                    }</span>
+<span class="nc" id="L331">                                                    break;</span>
+                                                }
+                                                default:
+<span class="nc" id="L334">                                                    log.warn(&quot;getResponseCommand failed, {} {}&quot;, response.getCode(), response.getRemark());</span>
+<span class="nc" id="L335">                                                    break;</span>
+                                            }
+                                        } else {
+<span class="nc" id="L338">                                            log.warn(&quot;getResponseCommand return null&quot;);</span>
+                                        }
+                                    } finally {
+<span class="nc" id="L341">                                        countDownLatch.countDown();</span>
+<span class="nc" id="L342">                                    }</span>
+<span class="nc" id="L343">                                }</span>
+<span class="nc" id="L344">                            }, isUniqKey);</span>
+<span class="nc" id="L345">                    } catch (Exception e) {</span>
+<span class="nc" id="L346">                        log.warn(&quot;queryMessage exception&quot;, e);</span>
+<span class="nc" id="L347">                    }</span>
+
+<span class="nc" id="L349">                }</span>
+
+<span class="nc" id="L351">                boolean ok = countDownLatch.await(timeoutMillis * 4, TimeUnit.MILLISECONDS);</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">                if (!ok) {</span>
+<span class="nc" id="L353">                    log.warn(&quot;queryMessage, maybe some broker failed&quot;);</span>
+                }
+
+<span class="nc" id="L356">                long indexLastUpdateTimestamp = 0;</span>
+<span class="nc" id="L357">                List&lt;MessageExt&gt; messageList = new LinkedList&lt;MessageExt&gt;();</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">                for (QueryResult qr : queryResultList) {</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">                    if (qr.getIndexLastUpdateTimestamp() &gt; indexLastUpdateTimestamp) {</span>
+<span class="nc" id="L360">                        indexLastUpdateTimestamp = qr.getIndexLastUpdateTimestamp();</span>
+                    }
+
+<span class="nc bnc" id="L363" title="All 2 branches missed.">                    for (MessageExt msgExt : qr.getMessageList()) {</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">                        if (isUniqKey) {</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">                            if (msgExt.getMsgId().equals(key)) {</span>
+
+<span class="nc bnc" id="L367" title="All 2 branches missed.">                                if (messageList.size() &gt; 0) {</span>
+
+<span class="nc bnc" id="L369" title="All 2 branches missed.">                                    if (messageList.get(0).getStoreTimestamp() &gt; msgExt.getStoreTimestamp()) {</span>
+
+<span class="nc" id="L371">                                        messageList.clear();</span>
+<span class="nc" id="L372">                                        messageList.add(msgExt);</span>
+                                    }
+
+                                } else {
+
+<span class="nc" id="L377">                                    messageList.add(msgExt);</span>
+                                }
+                            } else {
+<span class="nc" id="L380">                                log.warn(&quot;queryMessage by uniqKey, find message key not matched, maybe hash duplicate {}&quot;, msgExt.toString());</span>
+                            }
+                        } else {
+<span class="nc" id="L383">                            String keys = msgExt.getKeys();</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">                            if (keys != null) {</span>
+<span class="nc" id="L385">                                boolean matched = false;</span>
+<span class="nc" id="L386">                                String[] keyArray = keys.split(MessageConst.KEY_SEPARATOR);</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                                if (keyArray != null) {</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">                                    for (String k : keyArray) {</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">                                        if (key.equals(k)) {</span>
+<span class="nc" id="L390">                                            matched = true;</span>
+<span class="nc" id="L391">                                            break;</span>
+                                        }
+                                    }
+                                }
+
+<span class="nc bnc" id="L396" title="All 2 branches missed.">                                if (matched) {</span>
+<span class="nc" id="L397">                                    messageList.add(msgExt);</span>
+                                } else {
+<span class="nc" id="L399">                                    log.warn(&quot;queryMessage, find message key not matched, maybe hash duplicate {}&quot;, msgExt.toString());</span>
+                                }
+                            }
+                        }
+<span class="nc" id="L403">                    }</span>
+<span class="nc" id="L404">                }</span>
+
+<span class="nc bnc" id="L406" title="All 2 branches missed.">                if (!messageList.isEmpty()) {</span>
+<span class="nc" id="L407">                    return new QueryResult(indexLastUpdateTimestamp, messageList);</span>
+                } else {
+<span class="nc" id="L409">                    throw new MQClientException(ResponseCode.NO_MESSAGE, &quot;query message by key finished, but no message.&quot;);</span>
+                }
+            }
+        }
+
+<span class="nc" id="L414">        throw new MQClientException(ResponseCode.TOPIC_NOT_EXIST, &quot;The topic[&quot; + topic + &quot;] not matched route info&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

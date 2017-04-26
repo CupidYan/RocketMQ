@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProducerManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.client</a> &gt; <span class="el_source">ProducerManager.java</span></div><h1>ProducerManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.client;
+
+import io.netty.channel.Channel;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class ProducerManager {
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+    private static final long LOCK_TIMEOUT_MILLIS = 3000;
+    private static final long CHANNEL_EXPIRED_TIMEOUT = 1000 * 120;
+<span class="fc" id="L37">    private final Lock groupChannelLock = new ReentrantLock();</span>
+<span class="fc" id="L38">    private final HashMap&lt;String /* group name */, HashMap&lt;Channel, ClientChannelInfo&gt;&gt; groupChannelTable =</span>
+        new HashMap&lt;String, HashMap&lt;Channel, ClientChannelInfo&gt;&gt;();
+
+<span class="fc" id="L41">    public ProducerManager() {</span>
+<span class="fc" id="L42">    }</span>
+
+    public HashMap&lt;String, HashMap&lt;Channel, ClientChannelInfo&gt;&gt; getGroupChannelTable() {
+<span class="fc" id="L45">        HashMap&lt;String /* group name */, HashMap&lt;Channel, ClientChannelInfo&gt;&gt; newGroupChannelTable =</span>
+            new HashMap&lt;String, HashMap&lt;Channel, ClientChannelInfo&gt;&gt;();
+        try {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">            if (this.groupChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                try {
+<span class="fc" id="L50">                    newGroupChannelTable.putAll(groupChannelTable);</span>
+                } finally {
+<span class="pc" id="L52">                    groupChannelLock.unlock();</span>
+<span class="fc" id="L53">                }</span>
+            }
+<span class="nc" id="L55">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L56">            log.error(&quot;&quot;, e);</span>
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">        return newGroupChannelTable;</span>
+    }
+
+    public void scanNotActiveChannel() {
+        try {
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (this.groupChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                try {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    for (final Map.Entry&lt;String, HashMap&lt;Channel, ClientChannelInfo&gt;&gt; entry : this.groupChannelTable</span>
+<span class="fc" id="L66">                        .entrySet()) {</span>
+<span class="fc" id="L67">                        final String group = entry.getKey();</span>
+<span class="fc" id="L68">                        final HashMap&lt;Channel, ClientChannelInfo&gt; chlMap = entry.getValue();</span>
+
+<span class="fc" id="L70">                        Iterator&lt;Entry&lt;Channel, ClientChannelInfo&gt;&gt; it = chlMap.entrySet().iterator();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                        while (it.hasNext()) {</span>
+<span class="fc" id="L72">                            Entry&lt;Channel, ClientChannelInfo&gt; item = it.next();</span>
+                            // final Integer id = item.getKey();
+<span class="fc" id="L74">                            final ClientChannelInfo info = item.getValue();</span>
+
+<span class="fc" id="L76">                            long diff = System.currentTimeMillis() - info.getLastUpdateTimestamp();</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                            if (diff &gt; CHANNEL_EXPIRED_TIMEOUT) {</span>
+<span class="fc" id="L78">                                it.remove();</span>
+<span class="fc" id="L79">                                log.warn(</span>
+                                    &quot;SCAN: remove expired channel[{}] from ProducerManager groupChannelTable, producer group name: {}&quot;,
+<span class="fc" id="L81">                                    RemotingHelper.parseChannelRemoteAddr(info.getChannel()), group);</span>
+<span class="fc" id="L82">                                RemotingUtil.closeChannel(info.getChannel());</span>
+                            }
+<span class="fc" id="L84">                        }</span>
+<span class="fc" id="L85">                    }</span>
+                } finally {
+<span class="pc" id="L87">                    this.groupChannelLock.unlock();</span>
+<span class="fc" id="L88">                }</span>
+            } else {
+<span class="nc" id="L90">                log.warn(&quot;ProducerManager scanNotActiveChannel lock timeout&quot;);</span>
+            }
+<span class="nc" id="L92">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L93">            log.error(&quot;&quot;, e);</span>
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">    }</span>
+
+    public void doChannelCloseEvent(final String remoteAddr, final Channel channel) {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (channel != null) {</span>
+            try {
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                if (this.groupChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                    try {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                        for (final Map.Entry&lt;String, HashMap&lt;Channel, ClientChannelInfo&gt;&gt; entry : this.groupChannelTable</span>
+<span class="fc" id="L103">                            .entrySet()) {</span>
+<span class="fc" id="L104">                            final String group = entry.getKey();</span>
+<span class="fc" id="L105">                            final HashMap&lt;Channel, ClientChannelInfo&gt; clientChannelInfoTable =</span>
+<span class="fc" id="L106">                                entry.getValue();</span>
+<span class="fc" id="L107">                            final ClientChannelInfo clientChannelInfo =</span>
+<span class="fc" id="L108">                                clientChannelInfoTable.remove(channel);</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                            if (clientChannelInfo != null) {</span>
+<span class="fc" id="L110">                                log.info(</span>
+                                    &quot;NETTY EVENT: remove channel[{}][{}] from ProducerManager groupChannelTable, producer group: {}&quot;,
+<span class="fc" id="L112">                                    clientChannelInfo.toString(), remoteAddr, group);</span>
+                            }
+
+<span class="fc" id="L115">                        }</span>
+                    } finally {
+<span class="pc" id="L117">                        this.groupChannelLock.unlock();</span>
+<span class="fc" id="L118">                    }</span>
+                } else {
+<span class="nc" id="L120">                    log.warn(&quot;ProducerManager doChannelCloseEvent lock timeout&quot;);</span>
+                }
+<span class="nc" id="L122">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L123">                log.error(&quot;&quot;, e);</span>
+<span class="fc" id="L124">            }</span>
+        }
+<span class="fc" id="L126">    }</span>
+
+    public void registerProducer(final String group, final ClientChannelInfo clientChannelInfo) {
+        try {
+<span class="fc" id="L130">            ClientChannelInfo clientChannelInfoFound = null;</span>
+
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if (this.groupChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                try {
+<span class="fc" id="L134">                    HashMap&lt;Channel, ClientChannelInfo&gt; channelTable = this.groupChannelTable.get(group);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                    if (null == channelTable) {</span>
+<span class="fc" id="L136">                        channelTable = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L137">                        this.groupChannelTable.put(group, channelTable);</span>
+                    }
+
+<span class="fc" id="L140">                    clientChannelInfoFound = channelTable.get(clientChannelInfo.getChannel());</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                    if (null == clientChannelInfoFound) {</span>
+<span class="fc" id="L142">                        channelTable.put(clientChannelInfo.getChannel(), clientChannelInfo);</span>
+<span class="fc" id="L143">                        log.info(&quot;new producer connected, group: {} channel: {}&quot;, group,</span>
+<span class="fc" id="L144">                            clientChannelInfo.toString());</span>
+                    }
+                } finally {
+<span class="pc" id="L147">                    this.groupChannelLock.unlock();</span>
+<span class="fc" id="L148">                }</span>
+
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (clientChannelInfoFound != null) {</span>
+<span class="fc" id="L151">                    clientChannelInfoFound.setLastUpdateTimestamp(System.currentTimeMillis());</span>
+                }
+            } else {
+<span class="nc" id="L154">                log.warn(&quot;ProducerManager registerProducer lock timeout&quot;);</span>
+            }
+<span class="nc" id="L156">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L157">            log.error(&quot;&quot;, e);</span>
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">    }</span>
+
+    public void unregisterProducer(final String group, final ClientChannelInfo clientChannelInfo) {
+        try {
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (this.groupChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {</span>
+                try {
+<span class="fc" id="L165">                    HashMap&lt;Channel, ClientChannelInfo&gt; channelTable = this.groupChannelTable.get(group);</span>
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">                    if (null != channelTable &amp;&amp; !channelTable.isEmpty()) {</span>
+<span class="fc" id="L167">                        ClientChannelInfo old = channelTable.remove(clientChannelInfo.getChannel());</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                        if (old != null) {</span>
+<span class="fc" id="L169">                            log.info(&quot;unregister a producer[{}] from groupChannelTable {}&quot;, group,</span>
+<span class="fc" id="L170">                                clientChannelInfo.toString());</span>
+                        }
+
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                        if (channelTable.isEmpty()) {</span>
+<span class="fc" id="L174">                            this.groupChannelTable.remove(group);</span>
+<span class="fc" id="L175">                            log.info(&quot;unregister a producer group[{}] from groupChannelTable&quot;, group);</span>
+                        }
+                    }
+                } finally {
+<span class="pc" id="L179">                    this.groupChannelLock.unlock();</span>
+<span class="fc" id="L180">                }</span>
+            } else {
+<span class="nc" id="L182">                log.warn(&quot;ProducerManager unregisterProducer lock timeout&quot;);</span>
+            }
+<span class="nc" id="L184">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L185">            log.error(&quot;&quot;, e);</span>
+<span class="fc" id="L186">        }</span>
+<span class="fc" id="L187">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

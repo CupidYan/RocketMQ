@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Validators.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client</a> &gt; <span class="el_source">Validators.java</span></div><h1>Validators.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.client;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+
+/**
+ * Common Validator
+ */
+<span class="nc" id="L32">public class Validators {</span>
+    public static final String VALID_PATTERN_STR = &quot;^[%|a-zA-Z0-9_-]+$&quot;;
+<span class="fc" id="L34">    public static final Pattern PATTERN = Pattern.compile(VALID_PATTERN_STR);</span>
+    public static final int CHARACTER_MAX_LENGTH = 255;
+
+    /**
+     * @param origin
+     * @param patternStr
+     * @return The resulting {@code String}
+     */
+    public static String getGroupWithRegularExpression(String origin, String patternStr) {
+<span class="nc" id="L43">        Pattern pattern = Pattern.compile(patternStr);</span>
+<span class="nc" id="L44">        Matcher matcher = pattern.matcher(origin);</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        while (matcher.find()) {</span>
+<span class="nc" id="L46">            return matcher.group(0);</span>
+        }
+<span class="nc" id="L48">        return null;</span>
+    }
+
+    /**
+     * Validate group
+     *
+     * @param group
+     * @throws MQClientException
+     */
+    public static void checkGroup(String group) throws MQClientException {
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (UtilAll.isBlank(group)) {</span>
+<span class="nc" id="L59">            throw new MQClientException(&quot;the specified group is blank&quot;, null);</span>
+        }
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        if (!regularExpressionMatcher(group, PATTERN)) {</span>
+<span class="nc" id="L62">            throw new MQClientException(String.format(</span>
+                &quot;the specified group[%s] contains illegal characters, allowing only %s&quot;, group,
+                VALID_PATTERN_STR), null);
+        }
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (group.length() &gt; CHARACTER_MAX_LENGTH) {</span>
+<span class="nc" id="L67">            throw new MQClientException(&quot;the specified group is longer than group max length 255.&quot;, null);</span>
+        }
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * @param origin
+     * @param pattern
+     * @return &lt;tt&gt;true&lt;/tt&gt; if, and only if, the entire origin sequence matches this matcher's pattern
+     */
+    public static boolean regularExpressionMatcher(String origin, Pattern pattern) {
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        if (pattern == null) {</span>
+<span class="nc" id="L78">            return true;</span>
+        }
+<span class="fc" id="L80">        Matcher matcher = pattern.matcher(origin);</span>
+<span class="fc" id="L81">        return matcher.matches();</span>
+    }
+
+    /**
+     * Validate message
+     *
+     * @param msg
+     * @param defaultMQProducer
+     * @throws MQClientException
+     */
+    public static void checkMessage(Message msg, DefaultMQProducer defaultMQProducer)
+        throws MQClientException {
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (null == msg) {</span>
+<span class="nc" id="L94">            throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, &quot;the message is null&quot;);</span>
+        }
+        // topic
+<span class="fc" id="L97">        Validators.checkTopic(msg.getTopic());</span>
+        // body
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (null == msg.getBody()) {</span>
+<span class="nc" id="L100">            throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, &quot;the message body is null&quot;);</span>
+        }
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (0 == msg.getBody().length) {</span>
+<span class="fc" id="L104">            throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, &quot;the message body length is zero&quot;);</span>
+        }
+
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (msg.getBody().length &gt; defaultMQProducer.getMaxMessageSize()) {</span>
+<span class="nc" id="L108">            throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL,</span>
+<span class="nc" id="L109">                &quot;the message body size over max value, MAX: &quot; + defaultMQProducer.getMaxMessageSize());</span>
+        }
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Validate topic
+     *
+     * @param topic
+     * @throws MQClientException
+     */
+    public static void checkTopic(String topic) throws MQClientException {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (UtilAll.isBlank(topic)) {</span>
+<span class="fc" id="L121">            throw new MQClientException(&quot;The specified topic is blank&quot;, null);</span>
+        }
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (!regularExpressionMatcher(topic, PATTERN)) {</span>
+<span class="fc" id="L125">            throw new MQClientException(String.format(</span>
+                &quot;The specified topic[%s] contains illegal characters, allowing only %s&quot;, topic,
+                VALID_PATTERN_STR), null);
+        }
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (topic.length() &gt; CHARACTER_MAX_LENGTH) {</span>
+<span class="fc" id="L131">            throw new MQClientException(&quot;The specified topic is longer than topic max length 255.&quot;, null);</span>
+        }
+
+        //whether the same with system reserved keyword
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (topic.equals(MixAll.DEFAULT_TOPIC)) {</span>
+<span class="fc" id="L136">            throw new MQClientException(</span>
+<span class="fc" id="L137">                String.format(&quot;The topic[%s] is conflict with default topic.&quot;, topic), null);</span>
+        }
+<span class="fc" id="L139">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

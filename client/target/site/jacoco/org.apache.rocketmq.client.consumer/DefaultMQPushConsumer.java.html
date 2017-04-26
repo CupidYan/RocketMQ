@@ -1,0 +1,620 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultMQPushConsumer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client.consumer</a> &gt; <span class="el_source">DefaultMQPushConsumer.java</span></div><h1>DefaultMQPushConsumer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.client.consumer;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import org.apache.rocketmq.client.ClientConfig;
+import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.consumer.listener.MessageListener;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerOrderly;
+import org.apache.rocketmq.client.consumer.rebalance.AllocateMessageQueueAveragely;
+import org.apache.rocketmq.client.consumer.store.OffsetStore;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+
+/**
+ * In most scenarios, this is the mostly recommended class to consume messages.
+ * &lt;/p&gt;
+ *
+ * Technically speaking, this push client is virtually a wrapper of the underlying pull service. Specifically, on
+ * arrival of messages pulled from brokers, it roughly invokes the registered callback handler to feed the messages.
+ * &lt;/p&gt;
+ *
+ * See quickstart/Consumer in the example module for a typical usage.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ *     &lt;strong&gt;Thread Safety:&lt;/strong&gt; After initialization, the instance can be regarded as thread-safe.
+ * &lt;/p&gt;
+ */
+public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsumer {
+
+    /**
+     * Internal implementation. Most of the functions herein are delegated to it.
+     */
+    protected final transient DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
+
+    /**
+     * Consumers of the same role is required to have exactly same subscriptions and consumerGroup to correctly achieve
+     * load balance. It's required and needs to be globally unique.
+     * &lt;/p&gt;
+     *
+     * See &lt;a href=&quot;http://rocketmq.incubator.apache.org/docs/core-concept/&quot;&gt;here&lt;/a&gt; for further discussion.
+     */
+    private String consumerGroup;
+
+    /**
+     * Message model defines the way how messages are delivered to each consumer clients.
+     * &lt;/p&gt;
+     *
+     * RocketMQ supports two message models: clustering and broadcasting. If clustering is set, consumer clients with
+     * the same {@link #consumerGroup} would only consume shards of the messages subscribed, which achieves load
+     * balances; Conversely, if the broadcasting is set, each consumer client will consume all subscribed messages
+     * separately.
+     * &lt;/p&gt;
+     *
+     * This field defaults to clustering.
+     */
+<span class="fc" id="L85">    private MessageModel messageModel = MessageModel.CLUSTERING;</span>
+
+    /**
+     * Consuming point on consumer booting.
+     * &lt;/p&gt;
+     *
+     * There are three consuming points:
+     * &lt;ul&gt;
+     *     &lt;li&gt;
+     *         &lt;code&gt;CONSUME_FROM_LAST_OFFSET&lt;/code&gt;: consumer clients pick up where it stopped previously.
+     *         If it were a newly booting up consumer client, according aging of the consumer group, there are two
+     *         cases:
+     *         &lt;ol&gt;
+     *             &lt;li&gt;
+     *                 if the consumer group is created so recently that the earliest message being subscribed has yet
+     *                 expired, which means the consumer group represents a lately launched business, consuming will
+     *                 start from the very beginning;
+     *             &lt;/li&gt;
+     *             &lt;li&gt;
+     *                 if the earliest message being subscribed has expired, consuming will start from the latest
+     *                 messages, meaning messages born prior to the booting timestamp would be ignored.
+     *             &lt;/li&gt;
+     *         &lt;/ol&gt;
+     *     &lt;/li&gt;
+     *     &lt;li&gt;
+     *         &lt;code&gt;CONSUME_FROM_FIRST_OFFSET&lt;/code&gt;: Consumer client will start from earliest messages available.
+     *     &lt;/li&gt;
+     *     &lt;li&gt;
+     *         &lt;code&gt;CONSUME_FROM_TIMESTAMP&lt;/code&gt;: Consumer client will start from specified timestamp, which means
+     *         messages born prior to {@link #consumeTimestamp} will be ignored
+     *     &lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+<span class="fc" id="L118">    private ConsumeFromWhere consumeFromWhere = ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET;</span>
+
+    /**
+     * Backtracking consumption time with second precision. Time format is
+     * 20131223171201&lt;br&gt;
+     * Implying Seventeen twelve and 01 seconds on December 23, 2013 year&lt;br&gt;
+     * Default backtracking consumption time Half an hour ago.
+     */
+<span class="fc" id="L126">    private String consumeTimestamp = UtilAll.timeMillisToHumanString3(System.currentTimeMillis() - (1000 * 60 * 30));</span>
+
+    /**
+     * Queue allocation algorithm specifying how message queues are allocated to each consumer clients.
+     */
+    private AllocateMessageQueueStrategy allocateMessageQueueStrategy;
+
+    /**
+     * Subscription relationship
+     */
+<span class="fc" id="L136">    private Map&lt;String /* topic */, String /* sub expression */&gt; subscription = new HashMap&lt;&gt;();</span>
+
+    /**
+     * Message listener
+     */
+    private MessageListener messageListener;
+
+    /**
+     * Offset Storage
+     */
+    private OffsetStore offsetStore;
+
+    /**
+     * Minimum consumer thread number
+     */
+<span class="fc" id="L151">    private int consumeThreadMin = 20;</span>
+
+    /**
+     * Max consumer thread number
+     */
+<span class="fc" id="L156">    private int consumeThreadMax = 64;</span>
+
+    /**
+     * Threshold for dynamic adjustment of the number of thread pool
+     */
+<span class="fc" id="L161">    private long adjustThreadPoolNumsThreshold = 100000;</span>
+
+    /**
+     * Concurrently max span offset.it has no effect on sequential consumption
+     */
+<span class="fc" id="L166">    private int consumeConcurrentlyMaxSpan = 2000;</span>
+
+    /**
+     * Flow control threshold
+     */
+<span class="fc" id="L171">    private int pullThresholdForQueue = 1000;</span>
+
+    /**
+     * Message pull Interval
+     */
+<span class="fc" id="L176">    private long pullInterval = 0;</span>
+
+    /**
+     * Batch consumption size
+     */
+<span class="fc" id="L181">    private int consumeMessageBatchMaxSize = 1;</span>
+
+    /**
+     * Batch pull size
+     */
+<span class="fc" id="L186">    private int pullBatchSize = 32;</span>
+
+    /**
+     * Whether update subscription relationship when every pull
+     */
+<span class="fc" id="L191">    private boolean postSubscriptionWhenPull = false;</span>
+
+    /**
+     * Whether the unit of subscription group
+     */
+<span class="fc" id="L196">    private boolean unitMode = false;</span>
+
+    /**
+     * Max re-consume times. -1 means 16 times.
+     * &lt;/p&gt;
+     *
+     * If messages are re-consumed more than {@link #maxReconsumeTimes} before success, it's be directed to a deletion
+     * queue waiting.
+     */
+<span class="fc" id="L205">    private int maxReconsumeTimes = -1;</span>
+
+    /**
+     * Suspending pulling time for cases requiring slow pulling like flow-control scenario.
+     */
+<span class="fc" id="L210">    private long suspendCurrentQueueTimeMillis = 1000;</span>
+
+    /**
+     * Maximum amount of time in minutes a message may block the consuming thread.
+     */
+<span class="fc" id="L215">    private long consumeTimeout = 15;</span>
+
+    /**
+     * Default constructor.
+     */
+    public DefaultMQPushConsumer() {
+<span class="nc" id="L221">        this(MixAll.DEFAULT_CONSUMER_GROUP, null, new AllocateMessageQueueAveragely());</span>
+<span class="nc" id="L222">    }</span>
+
+    /**
+     * Constructor specifying consumer group, RPC hook and message queue allocating algorithm.
+     * @param consumerGroup Consume queue.
+     * @param rpcHook RPC hook to execute before each remoting command.
+     * @param allocateMessageQueueStrategy message queue allocating algorithm.
+     */
+<span class="fc" id="L230">    public DefaultMQPushConsumer(final String consumerGroup, RPCHook rpcHook, AllocateMessageQueueStrategy allocateMessageQueueStrategy) {</span>
+<span class="fc" id="L231">        this.consumerGroup = consumerGroup;</span>
+<span class="fc" id="L232">        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;</span>
+<span class="fc" id="L233">        defaultMQPushConsumerImpl = new DefaultMQPushConsumerImpl(this, rpcHook);</span>
+<span class="fc" id="L234">    }</span>
+
+    /**
+     * Constructor specifying RPC hook.
+     * @param rpcHook RPC hook to execute before each remoting command.
+     */
+    public DefaultMQPushConsumer(RPCHook rpcHook) {
+<span class="nc" id="L241">        this(MixAll.DEFAULT_CONSUMER_GROUP, rpcHook, new AllocateMessageQueueAveragely());</span>
+<span class="nc" id="L242">    }</span>
+
+    /**
+     * Constructor specifying consumer group.
+     * @param consumerGroup Consumer group.
+     */
+    public DefaultMQPushConsumer(final String consumerGroup) {
+<span class="fc" id="L249">        this(consumerGroup, null, new AllocateMessageQueueAveragely());</span>
+<span class="fc" id="L250">    }</span>
+
+    @Override
+    public void createTopic(String key, String newTopic, int queueNum) throws MQClientException {
+<span class="nc" id="L254">        createTopic(key, newTopic, queueNum, 0);</span>
+<span class="nc" id="L255">    }</span>
+
+    @Override
+    public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag) throws MQClientException {
+<span class="nc" id="L259">        this.defaultMQPushConsumerImpl.createTopic(key, newTopic, queueNum, topicSysFlag);</span>
+<span class="nc" id="L260">    }</span>
+
+    @Override
+    public long searchOffset(MessageQueue mq, long timestamp) throws MQClientException {
+<span class="nc" id="L264">        return this.defaultMQPushConsumerImpl.searchOffset(mq, timestamp);</span>
+    }
+
+    @Override
+    public long maxOffset(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L269">        return this.defaultMQPushConsumerImpl.maxOffset(mq);</span>
+    }
+
+    @Override
+    public long minOffset(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L274">        return this.defaultMQPushConsumerImpl.minOffset(mq);</span>
+    }
+
+    @Override
+    public long earliestMsgStoreTime(MessageQueue mq) throws MQClientException {
+<span class="nc" id="L279">        return this.defaultMQPushConsumerImpl.earliestMsgStoreTime(mq);</span>
+    }
+
+    @Override
+    public MessageExt viewMessage(String offsetMsgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+<span class="nc" id="L284">        return this.defaultMQPushConsumerImpl.viewMessage(offsetMsgId);</span>
+    }
+
+    @Override
+    public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end)
+        throws MQClientException, InterruptedException {
+<span class="nc" id="L290">        return this.defaultMQPushConsumerImpl.queryMessage(topic, key, maxNum, begin, end);</span>
+    }
+
+    @Override
+    public MessageExt viewMessage(String topic, String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        try {
+<span class="nc" id="L296">            MessageDecoder.decodeMessageId(msgId);</span>
+<span class="nc" id="L297">            return this.viewMessage(msgId);</span>
+<span class="nc" id="L298">        } catch (Exception e) {</span>
+            // Ignore
+        }
+<span class="nc" id="L301">        return this.defaultMQPushConsumerImpl.queryMessageByUniqKey(topic, msgId);</span>
+    }
+
+    public AllocateMessageQueueStrategy getAllocateMessageQueueStrategy() {
+<span class="fc" id="L305">        return allocateMessageQueueStrategy;</span>
+    }
+
+    public void setAllocateMessageQueueStrategy(AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
+<span class="nc" id="L309">        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;</span>
+<span class="nc" id="L310">    }</span>
+
+    public int getConsumeConcurrentlyMaxSpan() {
+<span class="fc" id="L313">        return consumeConcurrentlyMaxSpan;</span>
+    }
+
+    public void setConsumeConcurrentlyMaxSpan(int consumeConcurrentlyMaxSpan) {
+<span class="nc" id="L317">        this.consumeConcurrentlyMaxSpan = consumeConcurrentlyMaxSpan;</span>
+<span class="nc" id="L318">    }</span>
+
+    public ConsumeFromWhere getConsumeFromWhere() {
+<span class="fc" id="L321">        return consumeFromWhere;</span>
+    }
+
+    public void setConsumeFromWhere(ConsumeFromWhere consumeFromWhere) {
+<span class="nc" id="L325">        this.consumeFromWhere = consumeFromWhere;</span>
+<span class="nc" id="L326">    }</span>
+
+    public int getConsumeMessageBatchMaxSize() {
+<span class="fc" id="L329">        return consumeMessageBatchMaxSize;</span>
+    }
+
+    public void setConsumeMessageBatchMaxSize(int consumeMessageBatchMaxSize) {
+<span class="nc" id="L333">        this.consumeMessageBatchMaxSize = consumeMessageBatchMaxSize;</span>
+<span class="nc" id="L334">    }</span>
+
+    public String getConsumerGroup() {
+<span class="fc" id="L337">        return consumerGroup;</span>
+    }
+
+    public void setConsumerGroup(String consumerGroup) {
+<span class="nc" id="L341">        this.consumerGroup = consumerGroup;</span>
+<span class="nc" id="L342">    }</span>
+
+    public int getConsumeThreadMax() {
+<span class="fc" id="L345">        return consumeThreadMax;</span>
+    }
+
+    public void setConsumeThreadMax(int consumeThreadMax) {
+<span class="nc" id="L349">        this.consumeThreadMax = consumeThreadMax;</span>
+<span class="nc" id="L350">    }</span>
+
+    public int getConsumeThreadMin() {
+<span class="fc" id="L353">        return consumeThreadMin;</span>
+    }
+
+    public void setConsumeThreadMin(int consumeThreadMin) {
+<span class="nc" id="L357">        this.consumeThreadMin = consumeThreadMin;</span>
+<span class="nc" id="L358">    }</span>
+
+    public DefaultMQPushConsumerImpl getDefaultMQPushConsumerImpl() {
+<span class="fc" id="L361">        return defaultMQPushConsumerImpl;</span>
+    }
+
+    public MessageListener getMessageListener() {
+<span class="fc" id="L365">        return messageListener;</span>
+    }
+
+    public void setMessageListener(MessageListener messageListener) {
+<span class="nc" id="L369">        this.messageListener = messageListener;</span>
+<span class="nc" id="L370">    }</span>
+
+    public MessageModel getMessageModel() {
+<span class="fc" id="L373">        return messageModel;</span>
+    }
+
+    public void setMessageModel(MessageModel messageModel) {
+<span class="nc" id="L377">        this.messageModel = messageModel;</span>
+<span class="nc" id="L378">    }</span>
+
+    public int getPullBatchSize() {
+<span class="fc" id="L381">        return pullBatchSize;</span>
+    }
+
+    public void setPullBatchSize(int pullBatchSize) {
+<span class="nc" id="L385">        this.pullBatchSize = pullBatchSize;</span>
+<span class="nc" id="L386">    }</span>
+
+    public long getPullInterval() {
+<span class="fc" id="L389">        return pullInterval;</span>
+    }
+
+    public void setPullInterval(long pullInterval) {
+<span class="fc" id="L393">        this.pullInterval = pullInterval;</span>
+<span class="fc" id="L394">    }</span>
+
+    public int getPullThresholdForQueue() {
+<span class="fc" id="L397">        return pullThresholdForQueue;</span>
+    }
+
+    public void setPullThresholdForQueue(int pullThresholdForQueue) {
+<span class="nc" id="L401">        this.pullThresholdForQueue = pullThresholdForQueue;</span>
+<span class="nc" id="L402">    }</span>
+
+    public Map&lt;String, String&gt; getSubscription() {
+<span class="fc" id="L405">        return subscription;</span>
+    }
+
+    public void setSubscription(Map&lt;String, String&gt; subscription) {
+<span class="nc" id="L409">        this.subscription = subscription;</span>
+<span class="nc" id="L410">    }</span>
+
+    /**
+     * Send message back to broker which will be re-delivered in future.
+     * @param msg Message to send back.
+     * @param delayLevel delay level.
+     * @throws RemotingException if there is any network-tier error.
+     * @throws MQBrokerException if there is any broker error.
+     * @throws InterruptedException if the thread is interrupted.
+     * @throws MQClientException if there is any client error.
+     */
+    @Override
+    public void sendMessageBack(MessageExt msg, int delayLevel)
+        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+<span class="nc" id="L424">        this.defaultMQPushConsumerImpl.sendMessageBack(msg, delayLevel, null);</span>
+<span class="nc" id="L425">    }</span>
+
+    /**
+     * Send message back to the broker whose name is &lt;code&gt;brokerName&lt;/code&gt; and the message will be re-delivered in
+     * future.
+     *
+     * @param msg Message to send back.
+     * @param delayLevel delay level.
+     * @param brokerName broker name.
+     * @throws RemotingException if there is any network-tier error.
+     * @throws MQBrokerException if there is any broker error.
+     * @throws InterruptedException if the thread is interrupted.
+     * @throws MQClientException if there is any client error.
+     */
+    @Override
+    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName)
+        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+<span class="nc" id="L442">        this.defaultMQPushConsumerImpl.sendMessageBack(msg, delayLevel, brokerName);</span>
+<span class="nc" id="L443">    }</span>
+
+    @Override
+    public Set&lt;MessageQueue&gt; fetchSubscribeMessageQueues(String topic) throws MQClientException {
+<span class="nc" id="L447">        return this.defaultMQPushConsumerImpl.fetchSubscribeMessageQueues(topic);</span>
+    }
+
+    /**
+     * This method gets internal infrastructure readily to serve. Instances must call this method after configuration.
+     * @throws MQClientException if there is any client error.
+     */
+    @Override
+    public void start() throws MQClientException {
+<span class="fc" id="L456">        this.defaultMQPushConsumerImpl.start();</span>
+<span class="fc" id="L457">    }</span>
+
+    /**
+     * Shut down this client and releasing underlying resources.
+     */
+    @Override
+    public void shutdown() {
+<span class="fc" id="L464">        this.defaultMQPushConsumerImpl.shutdown();</span>
+<span class="fc" id="L465">    }</span>
+
+    @Override
+    @Deprecated
+    public void registerMessageListener(MessageListener messageListener) {
+<span class="nc" id="L470">        this.messageListener = messageListener;</span>
+<span class="nc" id="L471">        this.defaultMQPushConsumerImpl.registerMessageListener(messageListener);</span>
+<span class="nc" id="L472">    }</span>
+
+    /**
+     * Register a callback to execute on message arrival for concurrent consuming.
+     *
+     * @param messageListener message handling callback.
+     */
+    @Override
+    public void registerMessageListener(MessageListenerConcurrently messageListener) {
+<span class="fc" id="L481">        this.messageListener = messageListener;</span>
+<span class="fc" id="L482">        this.defaultMQPushConsumerImpl.registerMessageListener(messageListener);</span>
+<span class="fc" id="L483">    }</span>
+
+    /**
+     * Register a callback to execute on message arrival for orderly consuming.
+     *
+     * @param messageListener message handling callback.
+     */
+    @Override
+    public void registerMessageListener(MessageListenerOrderly messageListener) {
+<span class="fc" id="L492">        this.messageListener = messageListener;</span>
+<span class="fc" id="L493">        this.defaultMQPushConsumerImpl.registerMessageListener(messageListener);</span>
+<span class="fc" id="L494">    }</span>
+
+    /**
+     * Subscribe a topic to consuming subscription.
+     *
+     * @param topic topic to subscribe.
+     * @param subExpression subscription expression.it only support or operation such as &quot;tag1 || tag2 || tag3&quot; &lt;br&gt;
+     *     if null or * expression,meaning subscribe all
+     * @throws MQClientException if there is any client error.
+     */
+    @Override
+    public void subscribe(String topic, String subExpression) throws MQClientException {
+<span class="fc" id="L506">        this.defaultMQPushConsumerImpl.subscribe(topic, subExpression);</span>
+<span class="fc" id="L507">    }</span>
+
+    /**
+     * Subscribe a topic to consuming subscription.
+     * @param topic topic to consume.
+     * @param fullClassName full class name,must extend org.apache.rocketmq.common.filter. MessageFilter
+     * @param filterClassSource class source code,used UTF-8 file encoding,must be responsible for your code safety
+     * @throws MQClientException
+     */
+    @Override
+    public void subscribe(String topic, String fullClassName, String filterClassSource) throws MQClientException {
+<span class="nc" id="L518">        this.defaultMQPushConsumerImpl.subscribe(topic, fullClassName, filterClassSource);</span>
+<span class="nc" id="L519">    }</span>
+
+    /**
+     * Un-subscribe the specified topic from subscription.
+     * @param topic message topic
+     */
+    @Override
+    public void unsubscribe(String topic) {
+<span class="nc" id="L527">        this.defaultMQPushConsumerImpl.unsubscribe(topic);</span>
+<span class="nc" id="L528">    }</span>
+
+    /**
+     * Update the message consuming thread core pool size.
+     *
+     * @param corePoolSize new core pool size.
+     */
+    @Override
+    public void updateCorePoolSize(int corePoolSize) {
+<span class="nc" id="L537">        this.defaultMQPushConsumerImpl.updateCorePoolSize(corePoolSize);</span>
+<span class="nc" id="L538">    }</span>
+
+    /**
+     * Suspend pulling new messages.
+     */
+    @Override
+    public void suspend() {
+<span class="nc" id="L545">        this.defaultMQPushConsumerImpl.suspend();</span>
+<span class="nc" id="L546">    }</span>
+
+    /**
+     * Resume pulling.
+     */
+    @Override
+    public void resume() {
+<span class="nc" id="L553">        this.defaultMQPushConsumerImpl.resume();</span>
+<span class="nc" id="L554">    }</span>
+
+    public OffsetStore getOffsetStore() {
+<span class="fc" id="L557">        return offsetStore;</span>
+    }
+
+    public void setOffsetStore(OffsetStore offsetStore) {
+<span class="nc" id="L561">        this.offsetStore = offsetStore;</span>
+<span class="nc" id="L562">    }</span>
+
+    public String getConsumeTimestamp() {
+<span class="fc" id="L565">        return consumeTimestamp;</span>
+    }
+
+    public void setConsumeTimestamp(String consumeTimestamp) {
+<span class="nc" id="L569">        this.consumeTimestamp = consumeTimestamp;</span>
+<span class="nc" id="L570">    }</span>
+
+    public boolean isPostSubscriptionWhenPull() {
+<span class="fc" id="L573">        return postSubscriptionWhenPull;</span>
+    }
+
+    public void setPostSubscriptionWhenPull(boolean postSubscriptionWhenPull) {
+<span class="nc" id="L577">        this.postSubscriptionWhenPull = postSubscriptionWhenPull;</span>
+<span class="nc" id="L578">    }</span>
+
+    public boolean isUnitMode() {
+<span class="fc" id="L581">        return unitMode;</span>
+    }
+
+    public void setUnitMode(boolean isUnitMode) {
+<span class="nc" id="L585">        this.unitMode = isUnitMode;</span>
+<span class="nc" id="L586">    }</span>
+
+    public long getAdjustThreadPoolNumsThreshold() {
+<span class="nc" id="L589">        return adjustThreadPoolNumsThreshold;</span>
+    }
+
+    public void setAdjustThreadPoolNumsThreshold(long adjustThreadPoolNumsThreshold) {
+<span class="nc" id="L593">        this.adjustThreadPoolNumsThreshold = adjustThreadPoolNumsThreshold;</span>
+<span class="nc" id="L594">    }</span>
+
+    public int getMaxReconsumeTimes() {
+<span class="fc" id="L597">        return maxReconsumeTimes;</span>
+    }
+
+    public void setMaxReconsumeTimes(final int maxReconsumeTimes) {
+<span class="nc" id="L601">        this.maxReconsumeTimes = maxReconsumeTimes;</span>
+<span class="nc" id="L602">    }</span>
+
+    public long getSuspendCurrentQueueTimeMillis() {
+<span class="fc" id="L605">        return suspendCurrentQueueTimeMillis;</span>
+    }
+
+    public void setSuspendCurrentQueueTimeMillis(final long suspendCurrentQueueTimeMillis) {
+<span class="nc" id="L609">        this.suspendCurrentQueueTimeMillis = suspendCurrentQueueTimeMillis;</span>
+<span class="nc" id="L610">    }</span>
+
+    public long getConsumeTimeout() {
+<span class="fc" id="L613">        return consumeTimeout;</span>
+    }
+
+    public void setConsumeTimeout(final long consumeTimeout) {
+<span class="nc" id="L617">        this.consumeTimeout = consumeTimeout;</span>
+<span class="nc" id="L618">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

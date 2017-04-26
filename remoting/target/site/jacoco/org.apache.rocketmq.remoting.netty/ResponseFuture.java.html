@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResponseFuture.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-remoting 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.remoting.netty</a> &gt; <span class="el_source">ResponseFuture.java</span></div><h1>ResponseFuture.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.remoting.netty;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.rocketmq.remoting.InvokeCallback;
+import org.apache.rocketmq.remoting.common.SemaphoreReleaseOnlyOnce;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+
+public class ResponseFuture {
+    private final int opaque;
+    private final long timeoutMillis;
+    private final InvokeCallback invokeCallback;
+<span class="fc" id="L30">    private final long beginTimestamp = System.currentTimeMillis();</span>
+<span class="fc" id="L31">    private final CountDownLatch countDownLatch = new CountDownLatch(1);</span>
+
+    private final SemaphoreReleaseOnlyOnce once;
+
+<span class="fc" id="L35">    private final AtomicBoolean executeCallbackOnlyOnce = new AtomicBoolean(false);</span>
+    private volatile RemotingCommand responseCommand;
+<span class="fc" id="L37">    private volatile boolean sendRequestOK = true;</span>
+    private volatile Throwable cause;
+
+    public ResponseFuture(int opaque, long timeoutMillis, InvokeCallback invokeCallback,
+<span class="fc" id="L41">        SemaphoreReleaseOnlyOnce once) {</span>
+<span class="fc" id="L42">        this.opaque = opaque;</span>
+<span class="fc" id="L43">        this.timeoutMillis = timeoutMillis;</span>
+<span class="fc" id="L44">        this.invokeCallback = invokeCallback;</span>
+<span class="fc" id="L45">        this.once = once;</span>
+<span class="fc" id="L46">    }</span>
+
+    public void executeInvokeCallback() {
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (invokeCallback != null) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (this.executeCallbackOnlyOnce.compareAndSet(false, true)) {</span>
+<span class="nc" id="L51">                invokeCallback.operationComplete(this);</span>
+            }
+        }
+<span class="nc" id="L54">    }</span>
+
+    public void release() {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (this.once != null) {</span>
+<span class="fc" id="L58">            this.once.release();</span>
+        }
+<span class="fc" id="L60">    }</span>
+
+    public boolean isTimeout() {
+<span class="nc" id="L63">        long diff = System.currentTimeMillis() - this.beginTimestamp;</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        return diff &gt; this.timeoutMillis;</span>
+    }
+
+    public RemotingCommand waitResponse(final long timeoutMillis) throws InterruptedException {
+<span class="fc" id="L68">        this.countDownLatch.await(timeoutMillis, TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L69">        return this.responseCommand;</span>
+    }
+
+    public void putResponse(final RemotingCommand responseCommand) {
+<span class="fc" id="L73">        this.responseCommand = responseCommand;</span>
+<span class="fc" id="L74">        this.countDownLatch.countDown();</span>
+<span class="fc" id="L75">    }</span>
+
+    public long getBeginTimestamp() {
+<span class="nc" id="L78">        return beginTimestamp;</span>
+    }
+
+    public boolean isSendRequestOK() {
+<span class="nc" id="L82">        return sendRequestOK;</span>
+    }
+
+    public void setSendRequestOK(boolean sendRequestOK) {
+<span class="fc" id="L86">        this.sendRequestOK = sendRequestOK;</span>
+<span class="fc" id="L87">    }</span>
+
+    public long getTimeoutMillis() {
+<span class="nc" id="L90">        return timeoutMillis;</span>
+    }
+
+    public InvokeCallback getInvokeCallback() {
+<span class="fc" id="L94">        return invokeCallback;</span>
+    }
+
+    public Throwable getCause() {
+<span class="nc" id="L98">        return cause;</span>
+    }
+
+    public void setCause(Throwable cause) {
+<span class="nc" id="L102">        this.cause = cause;</span>
+<span class="nc" id="L103">    }</span>
+
+    public RemotingCommand getResponseCommand() {
+<span class="fc" id="L106">        return responseCommand;</span>
+    }
+
+    public void setResponseCommand(RemotingCommand responseCommand) {
+<span class="fc" id="L110">        this.responseCommand = responseCommand;</span>
+<span class="fc" id="L111">    }</span>
+
+    public int getOpaque() {
+<span class="nc" id="L114">        return opaque;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L119">        return &quot;ResponseFuture [responseCommand=&quot; + responseCommand + &quot;, sendRequestOK=&quot; + sendRequestOK</span>
+            + &quot;, cause=&quot; + cause + &quot;, opaque=&quot; + opaque + &quot;, timeoutMillis=&quot; + timeoutMillis
+            + &quot;, invokeCallback=&quot; + invokeCallback + &quot;, beginTimestamp=&quot; + beginTimestamp
+            + &quot;, countDownLatch=&quot; + countDownLatch + &quot;]&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

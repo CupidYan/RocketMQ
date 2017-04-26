@@ -1,0 +1,940 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MQVersion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common</a> &gt; <span class="el_source">MQVersion.java</span></div><h1>MQVersion.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.common;
+
+<span class="nc" id="L19">public class MQVersion {</span>
+
+<span class="nc" id="L21">    public static final int CURRENT_VERSION = Version.V4_1_0_SNAPSHOT.ordinal();</span>
+
+    public static String getVersionDesc(int value) {
+        try {
+<span class="nc" id="L25">            Version v = Version.values()[value];</span>
+<span class="nc" id="L26">            return v.name();</span>
+<span class="nc" id="L27">        } catch (Exception e) {</span>
+        }
+
+<span class="nc" id="L30">        return &quot;HigherVersion&quot;;</span>
+    }
+
+    public static Version value2Version(int value) {
+<span class="nc" id="L34">        return Version.values()[value];</span>
+    }
+
+<span class="nc" id="L37">    public enum Version {</span>
+<span class="nc" id="L38">        V3_0_0_SNAPSHOT,</span>
+<span class="nc" id="L39">        V3_0_0_ALPHA1,</span>
+<span class="nc" id="L40">        V3_0_0_BETA1,</span>
+<span class="nc" id="L41">        V3_0_0_BETA2,</span>
+<span class="nc" id="L42">        V3_0_0_BETA3,</span>
+<span class="nc" id="L43">        V3_0_0_BETA4,</span>
+<span class="nc" id="L44">        V3_0_0_BETA5,</span>
+<span class="nc" id="L45">        V3_0_0_BETA6_SNAPSHOT,</span>
+<span class="nc" id="L46">        V3_0_0_BETA6,</span>
+<span class="nc" id="L47">        V3_0_0_BETA7_SNAPSHOT,</span>
+<span class="nc" id="L48">        V3_0_0_BETA7,</span>
+<span class="nc" id="L49">        V3_0_0_BETA8_SNAPSHOT,</span>
+<span class="nc" id="L50">        V3_0_0_BETA8,</span>
+<span class="nc" id="L51">        V3_0_0_BETA9_SNAPSHOT,</span>
+<span class="nc" id="L52">        V3_0_0_BETA9,</span>
+<span class="nc" id="L53">        V3_0_0_FINAL,</span>
+<span class="nc" id="L54">        V3_0_1_SNAPSHOT,</span>
+<span class="nc" id="L55">        V3_0_1,</span>
+<span class="nc" id="L56">        V3_0_2_SNAPSHOT,</span>
+<span class="nc" id="L57">        V3_0_2,</span>
+<span class="nc" id="L58">        V3_0_3_SNAPSHOT,</span>
+<span class="nc" id="L59">        V3_0_3,</span>
+<span class="nc" id="L60">        V3_0_4_SNAPSHOT,</span>
+<span class="nc" id="L61">        V3_0_4,</span>
+<span class="nc" id="L62">        V3_0_5_SNAPSHOT,</span>
+<span class="nc" id="L63">        V3_0_5,</span>
+<span class="nc" id="L64">        V3_0_6_SNAPSHOT,</span>
+<span class="nc" id="L65">        V3_0_6,</span>
+<span class="nc" id="L66">        V3_0_7_SNAPSHOT,</span>
+<span class="nc" id="L67">        V3_0_7,</span>
+<span class="nc" id="L68">        V3_0_8_SNAPSHOT,</span>
+<span class="nc" id="L69">        V3_0_8,</span>
+<span class="nc" id="L70">        V3_0_9_SNAPSHOT,</span>
+<span class="nc" id="L71">        V3_0_9,</span>
+
+<span class="nc" id="L73">        V3_0_10_SNAPSHOT,</span>
+<span class="nc" id="L74">        V3_0_10,</span>
+
+<span class="nc" id="L76">        V3_0_11_SNAPSHOT,</span>
+<span class="nc" id="L77">        V3_0_11,</span>
+
+<span class="nc" id="L79">        V3_0_12_SNAPSHOT,</span>
+<span class="nc" id="L80">        V3_0_12,</span>
+
+<span class="nc" id="L82">        V3_0_13_SNAPSHOT,</span>
+<span class="nc" id="L83">        V3_0_13,</span>
+
+<span class="nc" id="L85">        V3_0_14_SNAPSHOT,</span>
+<span class="nc" id="L86">        V3_0_14,</span>
+
+<span class="nc" id="L88">        V3_0_15_SNAPSHOT,</span>
+<span class="nc" id="L89">        V3_0_15,</span>
+
+<span class="nc" id="L91">        V3_1_0_SNAPSHOT,</span>
+<span class="nc" id="L92">        V3_1_0,</span>
+
+<span class="nc" id="L94">        V3_1_1_SNAPSHOT,</span>
+<span class="nc" id="L95">        V3_1_1,</span>
+
+<span class="nc" id="L97">        V3_1_2_SNAPSHOT,</span>
+<span class="nc" id="L98">        V3_1_2,</span>
+
+<span class="nc" id="L100">        V3_1_3_SNAPSHOT,</span>
+<span class="nc" id="L101">        V3_1_3,</span>
+
+<span class="nc" id="L103">        V3_1_4_SNAPSHOT,</span>
+<span class="nc" id="L104">        V3_1_4,</span>
+
+<span class="nc" id="L106">        V3_1_5_SNAPSHOT,</span>
+<span class="nc" id="L107">        V3_1_5,</span>
+
+<span class="nc" id="L109">        V3_1_6_SNAPSHOT,</span>
+<span class="nc" id="L110">        V3_1_6,</span>
+
+<span class="nc" id="L112">        V3_1_7_SNAPSHOT,</span>
+<span class="nc" id="L113">        V3_1_7,</span>
+
+<span class="nc" id="L115">        V3_1_8_SNAPSHOT,</span>
+<span class="nc" id="L116">        V3_1_8,</span>
+
+<span class="nc" id="L118">        V3_1_9_SNAPSHOT,</span>
+<span class="nc" id="L119">        V3_1_9,</span>
+
+<span class="nc" id="L121">        V3_2_0_SNAPSHOT,</span>
+<span class="nc" id="L122">        V3_2_0,</span>
+
+<span class="nc" id="L124">        V3_2_1_SNAPSHOT,</span>
+<span class="nc" id="L125">        V3_2_1,</span>
+
+<span class="nc" id="L127">        V3_2_2_SNAPSHOT,</span>
+<span class="nc" id="L128">        V3_2_2,</span>
+
+<span class="nc" id="L130">        V3_2_3_SNAPSHOT,</span>
+<span class="nc" id="L131">        V3_2_3,</span>
+
+<span class="nc" id="L133">        V3_2_4_SNAPSHOT,</span>
+<span class="nc" id="L134">        V3_2_4,</span>
+
+<span class="nc" id="L136">        V3_2_5_SNAPSHOT,</span>
+<span class="nc" id="L137">        V3_2_5,</span>
+
+<span class="nc" id="L139">        V3_2_6_SNAPSHOT,</span>
+<span class="nc" id="L140">        V3_2_6,</span>
+
+<span class="nc" id="L142">        V3_2_7_SNAPSHOT,</span>
+<span class="nc" id="L143">        V3_2_7,</span>
+
+<span class="nc" id="L145">        V3_2_8_SNAPSHOT,</span>
+<span class="nc" id="L146">        V3_2_8,</span>
+
+<span class="nc" id="L148">        V3_2_9_SNAPSHOT,</span>
+<span class="nc" id="L149">        V3_2_9,</span>
+
+<span class="nc" id="L151">        V3_3_1_SNAPSHOT,</span>
+<span class="nc" id="L152">        V3_3_1,</span>
+
+<span class="nc" id="L154">        V3_3_2_SNAPSHOT,</span>
+<span class="nc" id="L155">        V3_3_2,</span>
+
+<span class="nc" id="L157">        V3_3_3_SNAPSHOT,</span>
+<span class="nc" id="L158">        V3_3_3,</span>
+
+<span class="nc" id="L160">        V3_3_4_SNAPSHOT,</span>
+<span class="nc" id="L161">        V3_3_4,</span>
+
+<span class="nc" id="L163">        V3_3_5_SNAPSHOT,</span>
+<span class="nc" id="L164">        V3_3_5,</span>
+
+<span class="nc" id="L166">        V3_3_6_SNAPSHOT,</span>
+<span class="nc" id="L167">        V3_3_6,</span>
+
+<span class="nc" id="L169">        V3_3_7_SNAPSHOT,</span>
+<span class="nc" id="L170">        V3_3_7,</span>
+
+<span class="nc" id="L172">        V3_3_8_SNAPSHOT,</span>
+<span class="nc" id="L173">        V3_3_8,</span>
+
+<span class="nc" id="L175">        V3_3_9_SNAPSHOT,</span>
+<span class="nc" id="L176">        V3_3_9,</span>
+
+<span class="nc" id="L178">        V3_4_1_SNAPSHOT,</span>
+<span class="nc" id="L179">        V3_4_1,</span>
+
+<span class="nc" id="L181">        V3_4_2_SNAPSHOT,</span>
+<span class="nc" id="L182">        V3_4_2,</span>
+
+<span class="nc" id="L184">        V3_4_3_SNAPSHOT,</span>
+<span class="nc" id="L185">        V3_4_3,</span>
+
+<span class="nc" id="L187">        V3_4_4_SNAPSHOT,</span>
+<span class="nc" id="L188">        V3_4_4,</span>
+
+<span class="nc" id="L190">        V3_4_5_SNAPSHOT,</span>
+<span class="nc" id="L191">        V3_4_5,</span>
+
+<span class="nc" id="L193">        V3_4_6_SNAPSHOT,</span>
+<span class="nc" id="L194">        V3_4_6,</span>
+
+<span class="nc" id="L196">        V3_4_7_SNAPSHOT,</span>
+<span class="nc" id="L197">        V3_4_7,</span>
+
+<span class="nc" id="L199">        V3_4_8_SNAPSHOT,</span>
+<span class="nc" id="L200">        V3_4_8,</span>
+
+<span class="nc" id="L202">        V3_4_9_SNAPSHOT,</span>
+<span class="nc" id="L203">        V3_4_9,</span>
+<span class="nc" id="L204">        V3_5_1_SNAPSHOT,</span>
+<span class="nc" id="L205">        V3_5_1,</span>
+
+<span class="nc" id="L207">        V3_5_2_SNAPSHOT,</span>
+<span class="nc" id="L208">        V3_5_2,</span>
+
+<span class="nc" id="L210">        V3_5_3_SNAPSHOT,</span>
+<span class="nc" id="L211">        V3_5_3,</span>
+
+<span class="nc" id="L213">        V3_5_4_SNAPSHOT,</span>
+<span class="nc" id="L214">        V3_5_4,</span>
+
+<span class="nc" id="L216">        V3_5_5_SNAPSHOT,</span>
+<span class="nc" id="L217">        V3_5_5,</span>
+
+<span class="nc" id="L219">        V3_5_6_SNAPSHOT,</span>
+<span class="nc" id="L220">        V3_5_6,</span>
+
+<span class="nc" id="L222">        V3_5_7_SNAPSHOT,</span>
+<span class="nc" id="L223">        V3_5_7,</span>
+
+<span class="nc" id="L225">        V3_5_8_SNAPSHOT,</span>
+<span class="nc" id="L226">        V3_5_8,</span>
+
+<span class="nc" id="L228">        V3_5_9_SNAPSHOT,</span>
+<span class="nc" id="L229">        V3_5_9,</span>
+
+<span class="nc" id="L231">        V3_6_1_SNAPSHOT,</span>
+<span class="nc" id="L232">        V3_6_1,</span>
+
+<span class="nc" id="L234">        V3_6_2_SNAPSHOT,</span>
+<span class="nc" id="L235">        V3_6_2,</span>
+
+<span class="nc" id="L237">        V3_6_3_SNAPSHOT,</span>
+<span class="nc" id="L238">        V3_6_3,</span>
+
+<span class="nc" id="L240">        V3_6_4_SNAPSHOT,</span>
+<span class="nc" id="L241">        V3_6_4,</span>
+
+<span class="nc" id="L243">        V3_6_5_SNAPSHOT,</span>
+<span class="nc" id="L244">        V3_6_5,</span>
+
+<span class="nc" id="L246">        V3_6_6_SNAPSHOT,</span>
+<span class="nc" id="L247">        V3_6_6,</span>
+
+<span class="nc" id="L249">        V3_6_7_SNAPSHOT,</span>
+<span class="nc" id="L250">        V3_6_7,</span>
+
+<span class="nc" id="L252">        V3_6_8_SNAPSHOT,</span>
+<span class="nc" id="L253">        V3_6_8,</span>
+
+<span class="nc" id="L255">        V3_6_9_SNAPSHOT,</span>
+<span class="nc" id="L256">        V3_6_9,</span>
+
+<span class="nc" id="L258">        V3_7_1_SNAPSHOT,</span>
+<span class="nc" id="L259">        V3_7_1,</span>
+
+<span class="nc" id="L261">        V3_7_2_SNAPSHOT,</span>
+<span class="nc" id="L262">        V3_7_2,</span>
+
+<span class="nc" id="L264">        V3_7_3_SNAPSHOT,</span>
+<span class="nc" id="L265">        V3_7_3,</span>
+
+<span class="nc" id="L267">        V3_7_4_SNAPSHOT,</span>
+<span class="nc" id="L268">        V3_7_4,</span>
+
+<span class="nc" id="L270">        V3_7_5_SNAPSHOT,</span>
+<span class="nc" id="L271">        V3_7_5,</span>
+
+<span class="nc" id="L273">        V3_7_6_SNAPSHOT,</span>
+<span class="nc" id="L274">        V3_7_6,</span>
+
+<span class="nc" id="L276">        V3_7_7_SNAPSHOT,</span>
+<span class="nc" id="L277">        V3_7_7,</span>
+
+<span class="nc" id="L279">        V3_7_8_SNAPSHOT,</span>
+<span class="nc" id="L280">        V3_7_8,</span>
+
+<span class="nc" id="L282">        V3_7_9_SNAPSHOT,</span>
+<span class="nc" id="L283">        V3_7_9,</span>
+
+<span class="nc" id="L285">        V3_8_1_SNAPSHOT,</span>
+<span class="nc" id="L286">        V3_8_1,</span>
+
+<span class="nc" id="L288">        V3_8_2_SNAPSHOT,</span>
+<span class="nc" id="L289">        V3_8_2,</span>
+
+<span class="nc" id="L291">        V3_8_3_SNAPSHOT,</span>
+<span class="nc" id="L292">        V3_8_3,</span>
+
+<span class="nc" id="L294">        V3_8_4_SNAPSHOT,</span>
+<span class="nc" id="L295">        V3_8_4,</span>
+
+<span class="nc" id="L297">        V3_8_5_SNAPSHOT,</span>
+<span class="nc" id="L298">        V3_8_5,</span>
+
+<span class="nc" id="L300">        V3_8_6_SNAPSHOT,</span>
+<span class="nc" id="L301">        V3_8_6,</span>
+
+<span class="nc" id="L303">        V3_8_7_SNAPSHOT,</span>
+<span class="nc" id="L304">        V3_8_7,</span>
+
+<span class="nc" id="L306">        V3_8_8_SNAPSHOT,</span>
+<span class="nc" id="L307">        V3_8_8,</span>
+
+<span class="nc" id="L309">        V3_8_9_SNAPSHOT,</span>
+<span class="nc" id="L310">        V3_8_9,</span>
+
+<span class="nc" id="L312">        V3_9_1_SNAPSHOT,</span>
+<span class="nc" id="L313">        V3_9_1,</span>
+
+<span class="nc" id="L315">        V3_9_2_SNAPSHOT,</span>
+<span class="nc" id="L316">        V3_9_2,</span>
+
+<span class="nc" id="L318">        V3_9_3_SNAPSHOT,</span>
+<span class="nc" id="L319">        V3_9_3,</span>
+
+<span class="nc" id="L321">        V3_9_4_SNAPSHOT,</span>
+<span class="nc" id="L322">        V3_9_4,</span>
+
+<span class="nc" id="L324">        V3_9_5_SNAPSHOT,</span>
+<span class="nc" id="L325">        V3_9_5,</span>
+
+<span class="nc" id="L327">        V3_9_6_SNAPSHOT,</span>
+<span class="nc" id="L328">        V3_9_6,</span>
+
+<span class="nc" id="L330">        V3_9_7_SNAPSHOT,</span>
+<span class="nc" id="L331">        V3_9_7,</span>
+
+<span class="nc" id="L333">        V3_9_8_SNAPSHOT,</span>
+<span class="nc" id="L334">        V3_9_8,</span>
+
+<span class="nc" id="L336">        V3_9_9_SNAPSHOT,</span>
+<span class="nc" id="L337">        V3_9_9,</span>
+
+<span class="nc" id="L339">        V4_0_0_SNAPSHOT,</span>
+<span class="nc" id="L340">        V4_0_0,</span>
+
+<span class="nc" id="L342">        V4_0_1_SNAPSHOT,</span>
+<span class="nc" id="L343">        V4_0_1,</span>
+
+<span class="nc" id="L345">        V4_0_2_SNAPSHOT,</span>
+<span class="nc" id="L346">        V4_0_2,</span>
+
+<span class="nc" id="L348">        V4_0_3_SNAPSHOT,</span>
+<span class="nc" id="L349">        V4_0_3,</span>
+
+<span class="nc" id="L351">        V4_0_4_SNAPSHOT,</span>
+<span class="nc" id="L352">        V4_0_4,</span>
+
+<span class="nc" id="L354">        V4_0_5_SNAPSHOT,</span>
+<span class="nc" id="L355">        V4_0_5,</span>
+
+<span class="nc" id="L357">        V4_0_6_SNAPSHOT,</span>
+<span class="nc" id="L358">        V4_0_6,</span>
+
+<span class="nc" id="L360">        V4_0_7_SNAPSHOT,</span>
+<span class="nc" id="L361">        V4_0_7,</span>
+
+<span class="nc" id="L363">        V4_0_8_SNAPSHOT,</span>
+<span class="nc" id="L364">        V4_0_8,</span>
+
+<span class="nc" id="L366">        V4_0_9_SNAPSHOT,</span>
+<span class="nc" id="L367">        V4_0_9,</span>
+
+<span class="nc" id="L369">        V4_1_0_SNAPSHOT,</span>
+<span class="nc" id="L370">        V4_1_0,</span>
+
+<span class="nc" id="L372">        V4_1_1_SNAPSHOT,</span>
+<span class="nc" id="L373">        V4_1_1,</span>
+
+<span class="nc" id="L375">        V4_1_2_SNAPSHOT,</span>
+<span class="nc" id="L376">        V4_1_2,</span>
+
+<span class="nc" id="L378">        V4_1_3_SNAPSHOT,</span>
+<span class="nc" id="L379">        V4_1_3,</span>
+
+<span class="nc" id="L381">        V4_1_4_SNAPSHOT,</span>
+<span class="nc" id="L382">        V4_1_4,</span>
+
+<span class="nc" id="L384">        V4_1_5_SNAPSHOT,</span>
+<span class="nc" id="L385">        V4_1_5,</span>
+
+<span class="nc" id="L387">        V4_1_6_SNAPSHOT,</span>
+<span class="nc" id="L388">        V4_1_6,</span>
+
+<span class="nc" id="L390">        V4_1_7_SNAPSHOT,</span>
+<span class="nc" id="L391">        V4_1_7,</span>
+
+<span class="nc" id="L393">        V4_1_8_SNAPSHOT,</span>
+<span class="nc" id="L394">        V4_1_8,</span>
+
+<span class="nc" id="L396">        V4_1_9_SNAPSHOT,</span>
+<span class="nc" id="L397">        V4_1_9,</span>
+
+<span class="nc" id="L399">        V4_2_0_SNAPSHOT,</span>
+<span class="nc" id="L400">        V4_2_0,</span>
+
+<span class="nc" id="L402">        V4_2_1_SNAPSHOT,</span>
+<span class="nc" id="L403">        V4_2_1,</span>
+
+<span class="nc" id="L405">        V4_2_2_SNAPSHOT,</span>
+<span class="nc" id="L406">        V4_2_2,</span>
+
+<span class="nc" id="L408">        V4_2_3_SNAPSHOT,</span>
+<span class="nc" id="L409">        V4_2_3,</span>
+
+<span class="nc" id="L411">        V4_2_4_SNAPSHOT,</span>
+<span class="nc" id="L412">        V4_2_4,</span>
+
+<span class="nc" id="L414">        V4_2_5_SNAPSHOT,</span>
+<span class="nc" id="L415">        V4_2_5,</span>
+
+<span class="nc" id="L417">        V4_2_6_SNAPSHOT,</span>
+<span class="nc" id="L418">        V4_2_6,</span>
+
+<span class="nc" id="L420">        V4_2_7_SNAPSHOT,</span>
+<span class="nc" id="L421">        V4_2_7,</span>
+
+<span class="nc" id="L423">        V4_2_8_SNAPSHOT,</span>
+<span class="nc" id="L424">        V4_2_8,</span>
+
+<span class="nc" id="L426">        V4_2_9_SNAPSHOT,</span>
+<span class="nc" id="L427">        V4_2_9,</span>
+
+<span class="nc" id="L429">        V4_3_0_SNAPSHOT,</span>
+<span class="nc" id="L430">        V4_3_0,</span>
+
+<span class="nc" id="L432">        V4_3_1_SNAPSHOT,</span>
+<span class="nc" id="L433">        V4_3_1,</span>
+
+<span class="nc" id="L435">        V4_3_2_SNAPSHOT,</span>
+<span class="nc" id="L436">        V4_3_2,</span>
+
+<span class="nc" id="L438">        V4_3_3_SNAPSHOT,</span>
+<span class="nc" id="L439">        V4_3_3,</span>
+
+<span class="nc" id="L441">        V4_3_4_SNAPSHOT,</span>
+<span class="nc" id="L442">        V4_3_4,</span>
+
+<span class="nc" id="L444">        V4_3_5_SNAPSHOT,</span>
+<span class="nc" id="L445">        V4_3_5,</span>
+
+<span class="nc" id="L447">        V4_3_6_SNAPSHOT,</span>
+<span class="nc" id="L448">        V4_3_6,</span>
+
+<span class="nc" id="L450">        V4_3_7_SNAPSHOT,</span>
+<span class="nc" id="L451">        V4_3_7,</span>
+
+<span class="nc" id="L453">        V4_3_8_SNAPSHOT,</span>
+<span class="nc" id="L454">        V4_3_8,</span>
+
+<span class="nc" id="L456">        V4_3_9_SNAPSHOT,</span>
+<span class="nc" id="L457">        V4_3_9,</span>
+
+<span class="nc" id="L459">        V4_4_0_SNAPSHOT,</span>
+<span class="nc" id="L460">        V4_4_0,</span>
+
+<span class="nc" id="L462">        V4_4_1_SNAPSHOT,</span>
+<span class="nc" id="L463">        V4_4_1,</span>
+
+<span class="nc" id="L465">        V4_4_2_SNAPSHOT,</span>
+<span class="nc" id="L466">        V4_4_2,</span>
+
+<span class="nc" id="L468">        V4_4_3_SNAPSHOT,</span>
+<span class="nc" id="L469">        V4_4_3,</span>
+
+<span class="nc" id="L471">        V4_4_4_SNAPSHOT,</span>
+<span class="nc" id="L472">        V4_4_4,</span>
+
+<span class="nc" id="L474">        V4_4_5_SNAPSHOT,</span>
+<span class="nc" id="L475">        V4_4_5,</span>
+
+<span class="nc" id="L477">        V4_4_6_SNAPSHOT,</span>
+<span class="nc" id="L478">        V4_4_6,</span>
+
+<span class="nc" id="L480">        V4_4_7_SNAPSHOT,</span>
+<span class="nc" id="L481">        V4_4_7,</span>
+
+<span class="nc" id="L483">        V4_4_8_SNAPSHOT,</span>
+<span class="nc" id="L484">        V4_4_8,</span>
+
+<span class="nc" id="L486">        V4_4_9_SNAPSHOT,</span>
+<span class="nc" id="L487">        V4_4_9,</span>
+
+<span class="nc" id="L489">        V4_5_0_SNAPSHOT,</span>
+<span class="nc" id="L490">        V4_5_0,</span>
+
+<span class="nc" id="L492">        V4_5_1_SNAPSHOT,</span>
+<span class="nc" id="L493">        V4_5_1,</span>
+
+<span class="nc" id="L495">        V4_5_2_SNAPSHOT,</span>
+<span class="nc" id="L496">        V4_5_2,</span>
+
+<span class="nc" id="L498">        V4_5_3_SNAPSHOT,</span>
+<span class="nc" id="L499">        V4_5_3,</span>
+
+<span class="nc" id="L501">        V4_5_4_SNAPSHOT,</span>
+<span class="nc" id="L502">        V4_5_4,</span>
+
+<span class="nc" id="L504">        V4_5_5_SNAPSHOT,</span>
+<span class="nc" id="L505">        V4_5_5,</span>
+
+<span class="nc" id="L507">        V4_5_6_SNAPSHOT,</span>
+<span class="nc" id="L508">        V4_5_6,</span>
+
+<span class="nc" id="L510">        V4_5_7_SNAPSHOT,</span>
+<span class="nc" id="L511">        V4_5_7,</span>
+
+<span class="nc" id="L513">        V4_5_8_SNAPSHOT,</span>
+<span class="nc" id="L514">        V4_5_8,</span>
+
+<span class="nc" id="L516">        V4_5_9_SNAPSHOT,</span>
+<span class="nc" id="L517">        V4_5_9,</span>
+
+<span class="nc" id="L519">        V4_6_0_SNAPSHOT,</span>
+<span class="nc" id="L520">        V4_6_0,</span>
+
+<span class="nc" id="L522">        V4_6_1_SNAPSHOT,</span>
+<span class="nc" id="L523">        V4_6_1,</span>
+
+<span class="nc" id="L525">        V4_6_2_SNAPSHOT,</span>
+<span class="nc" id="L526">        V4_6_2,</span>
+
+<span class="nc" id="L528">        V4_6_3_SNAPSHOT,</span>
+<span class="nc" id="L529">        V4_6_3,</span>
+
+<span class="nc" id="L531">        V4_6_4_SNAPSHOT,</span>
+<span class="nc" id="L532">        V4_6_4,</span>
+
+<span class="nc" id="L534">        V4_6_5_SNAPSHOT,</span>
+<span class="nc" id="L535">        V4_6_5,</span>
+
+<span class="nc" id="L537">        V4_6_6_SNAPSHOT,</span>
+<span class="nc" id="L538">        V4_6_6,</span>
+
+<span class="nc" id="L540">        V4_6_7_SNAPSHOT,</span>
+<span class="nc" id="L541">        V4_6_7,</span>
+
+<span class="nc" id="L543">        V4_6_8_SNAPSHOT,</span>
+<span class="nc" id="L544">        V4_6_8,</span>
+
+<span class="nc" id="L546">        V4_6_9_SNAPSHOT,</span>
+<span class="nc" id="L547">        V4_6_9,</span>
+
+<span class="nc" id="L549">        V4_7_0_SNAPSHOT,</span>
+<span class="nc" id="L550">        V4_7_0,</span>
+
+<span class="nc" id="L552">        V4_7_1_SNAPSHOT,</span>
+<span class="nc" id="L553">        V4_7_1,</span>
+
+<span class="nc" id="L555">        V4_7_2_SNAPSHOT,</span>
+<span class="nc" id="L556">        V4_7_2,</span>
+
+<span class="nc" id="L558">        V4_7_3_SNAPSHOT,</span>
+<span class="nc" id="L559">        V4_7_3,</span>
+
+<span class="nc" id="L561">        V4_7_4_SNAPSHOT,</span>
+<span class="nc" id="L562">        V4_7_4,</span>
+
+<span class="nc" id="L564">        V4_7_5_SNAPSHOT,</span>
+<span class="nc" id="L565">        V4_7_5,</span>
+
+<span class="nc" id="L567">        V4_7_6_SNAPSHOT,</span>
+<span class="nc" id="L568">        V4_7_6,</span>
+
+<span class="nc" id="L570">        V4_7_7_SNAPSHOT,</span>
+<span class="nc" id="L571">        V4_7_7,</span>
+
+<span class="nc" id="L573">        V4_7_8_SNAPSHOT,</span>
+<span class="nc" id="L574">        V4_7_8,</span>
+
+<span class="nc" id="L576">        V4_7_9_SNAPSHOT,</span>
+<span class="nc" id="L577">        V4_7_9,</span>
+
+<span class="nc" id="L579">        V4_8_0_SNAPSHOT,</span>
+<span class="nc" id="L580">        V4_8_0,</span>
+
+<span class="nc" id="L582">        V4_8_1_SNAPSHOT,</span>
+<span class="nc" id="L583">        V4_8_1,</span>
+
+<span class="nc" id="L585">        V4_8_2_SNAPSHOT,</span>
+<span class="nc" id="L586">        V4_8_2,</span>
+
+<span class="nc" id="L588">        V4_8_3_SNAPSHOT,</span>
+<span class="nc" id="L589">        V4_8_3,</span>
+
+<span class="nc" id="L591">        V4_8_4_SNAPSHOT,</span>
+<span class="nc" id="L592">        V4_8_4,</span>
+
+<span class="nc" id="L594">        V4_8_5_SNAPSHOT,</span>
+<span class="nc" id="L595">        V4_8_5,</span>
+
+<span class="nc" id="L597">        V4_8_6_SNAPSHOT,</span>
+<span class="nc" id="L598">        V4_8_6,</span>
+
+<span class="nc" id="L600">        V4_8_7_SNAPSHOT,</span>
+<span class="nc" id="L601">        V4_8_7,</span>
+
+<span class="nc" id="L603">        V4_8_8_SNAPSHOT,</span>
+<span class="nc" id="L604">        V4_8_8,</span>
+
+<span class="nc" id="L606">        V4_8_9_SNAPSHOT,</span>
+<span class="nc" id="L607">        V4_8_9,</span>
+
+<span class="nc" id="L609">        V4_9_0_SNAPSHOT,</span>
+<span class="nc" id="L610">        V4_9_0,</span>
+
+<span class="nc" id="L612">        V4_9_1_SNAPSHOT,</span>
+<span class="nc" id="L613">        V4_9_1,</span>
+
+<span class="nc" id="L615">        V4_9_2_SNAPSHOT,</span>
+<span class="nc" id="L616">        V4_9_2,</span>
+
+<span class="nc" id="L618">        V4_9_3_SNAPSHOT,</span>
+<span class="nc" id="L619">        V4_9_3,</span>
+
+<span class="nc" id="L621">        V4_9_4_SNAPSHOT,</span>
+<span class="nc" id="L622">        V4_9_4,</span>
+
+<span class="nc" id="L624">        V4_9_5_SNAPSHOT,</span>
+<span class="nc" id="L625">        V4_9_5,</span>
+
+<span class="nc" id="L627">        V4_9_6_SNAPSHOT,</span>
+<span class="nc" id="L628">        V4_9_6,</span>
+
+<span class="nc" id="L630">        V4_9_7_SNAPSHOT,</span>
+<span class="nc" id="L631">        V4_9_7,</span>
+
+<span class="nc" id="L633">        V4_9_8_SNAPSHOT,</span>
+<span class="nc" id="L634">        V4_9_8,</span>
+
+<span class="nc" id="L636">        V4_9_9_SNAPSHOT,</span>
+<span class="nc" id="L637">        V4_9_9,</span>
+
+<span class="nc" id="L639">        V5_0_0_SNAPSHOT,</span>
+<span class="nc" id="L640">        V5_0_0,</span>
+
+<span class="nc" id="L642">        V5_0_1_SNAPSHOT,</span>
+<span class="nc" id="L643">        V5_0_1,</span>
+
+<span class="nc" id="L645">        V5_0_2_SNAPSHOT,</span>
+<span class="nc" id="L646">        V5_0_2,</span>
+
+<span class="nc" id="L648">        V5_0_3_SNAPSHOT,</span>
+<span class="nc" id="L649">        V5_0_3,</span>
+
+<span class="nc" id="L651">        V5_0_4_SNAPSHOT,</span>
+<span class="nc" id="L652">        V5_0_4,</span>
+
+<span class="nc" id="L654">        V5_0_5_SNAPSHOT,</span>
+<span class="nc" id="L655">        V5_0_5,</span>
+
+<span class="nc" id="L657">        V5_0_6_SNAPSHOT,</span>
+<span class="nc" id="L658">        V5_0_6,</span>
+
+<span class="nc" id="L660">        V5_0_7_SNAPSHOT,</span>
+<span class="nc" id="L661">        V5_0_7,</span>
+
+<span class="nc" id="L663">        V5_0_8_SNAPSHOT,</span>
+<span class="nc" id="L664">        V5_0_8,</span>
+
+<span class="nc" id="L666">        V5_0_9_SNAPSHOT,</span>
+<span class="nc" id="L667">        V5_0_9,</span>
+
+<span class="nc" id="L669">        V5_1_0_SNAPSHOT,</span>
+<span class="nc" id="L670">        V5_1_0,</span>
+
+<span class="nc" id="L672">        V5_1_1_SNAPSHOT,</span>
+<span class="nc" id="L673">        V5_1_1,</span>
+
+<span class="nc" id="L675">        V5_1_2_SNAPSHOT,</span>
+<span class="nc" id="L676">        V5_1_2,</span>
+
+<span class="nc" id="L678">        V5_1_3_SNAPSHOT,</span>
+<span class="nc" id="L679">        V5_1_3,</span>
+
+<span class="nc" id="L681">        V5_1_4_SNAPSHOT,</span>
+<span class="nc" id="L682">        V5_1_4,</span>
+
+<span class="nc" id="L684">        V5_1_5_SNAPSHOT,</span>
+<span class="nc" id="L685">        V5_1_5,</span>
+
+<span class="nc" id="L687">        V5_1_6_SNAPSHOT,</span>
+<span class="nc" id="L688">        V5_1_6,</span>
+
+<span class="nc" id="L690">        V5_1_7_SNAPSHOT,</span>
+<span class="nc" id="L691">        V5_1_7,</span>
+
+<span class="nc" id="L693">        V5_1_8_SNAPSHOT,</span>
+<span class="nc" id="L694">        V5_1_8,</span>
+
+<span class="nc" id="L696">        V5_1_9_SNAPSHOT,</span>
+<span class="nc" id="L697">        V5_1_9,</span>
+
+<span class="nc" id="L699">        V5_2_0_SNAPSHOT,</span>
+<span class="nc" id="L700">        V5_2_0,</span>
+
+<span class="nc" id="L702">        V5_2_1_SNAPSHOT,</span>
+<span class="nc" id="L703">        V5_2_1,</span>
+
+<span class="nc" id="L705">        V5_2_2_SNAPSHOT,</span>
+<span class="nc" id="L706">        V5_2_2,</span>
+
+<span class="nc" id="L708">        V5_2_3_SNAPSHOT,</span>
+<span class="nc" id="L709">        V5_2_3,</span>
+
+<span class="nc" id="L711">        V5_2_4_SNAPSHOT,</span>
+<span class="nc" id="L712">        V5_2_4,</span>
+
+<span class="nc" id="L714">        V5_2_5_SNAPSHOT,</span>
+<span class="nc" id="L715">        V5_2_5,</span>
+
+<span class="nc" id="L717">        V5_2_6_SNAPSHOT,</span>
+<span class="nc" id="L718">        V5_2_6,</span>
+
+<span class="nc" id="L720">        V5_2_7_SNAPSHOT,</span>
+<span class="nc" id="L721">        V5_2_7,</span>
+
+<span class="nc" id="L723">        V5_2_8_SNAPSHOT,</span>
+<span class="nc" id="L724">        V5_2_8,</span>
+
+<span class="nc" id="L726">        V5_2_9_SNAPSHOT,</span>
+<span class="nc" id="L727">        V5_2_9,</span>
+
+<span class="nc" id="L729">        V5_3_0_SNAPSHOT,</span>
+<span class="nc" id="L730">        V5_3_0,</span>
+
+<span class="nc" id="L732">        V5_3_1_SNAPSHOT,</span>
+<span class="nc" id="L733">        V5_3_1,</span>
+
+<span class="nc" id="L735">        V5_3_2_SNAPSHOT,</span>
+<span class="nc" id="L736">        V5_3_2,</span>
+
+<span class="nc" id="L738">        V5_3_3_SNAPSHOT,</span>
+<span class="nc" id="L739">        V5_3_3,</span>
+
+<span class="nc" id="L741">        V5_3_4_SNAPSHOT,</span>
+<span class="nc" id="L742">        V5_3_4,</span>
+
+<span class="nc" id="L744">        V5_3_5_SNAPSHOT,</span>
+<span class="nc" id="L745">        V5_3_5,</span>
+
+<span class="nc" id="L747">        V5_3_6_SNAPSHOT,</span>
+<span class="nc" id="L748">        V5_3_6,</span>
+
+<span class="nc" id="L750">        V5_3_7_SNAPSHOT,</span>
+<span class="nc" id="L751">        V5_3_7,</span>
+
+<span class="nc" id="L753">        V5_3_8_SNAPSHOT,</span>
+<span class="nc" id="L754">        V5_3_8,</span>
+
+<span class="nc" id="L756">        V5_3_9_SNAPSHOT,</span>
+<span class="nc" id="L757">        V5_3_9,</span>
+
+<span class="nc" id="L759">        V5_4_0_SNAPSHOT,</span>
+<span class="nc" id="L760">        V5_4_0,</span>
+
+<span class="nc" id="L762">        V5_4_1_SNAPSHOT,</span>
+<span class="nc" id="L763">        V5_4_1,</span>
+
+<span class="nc" id="L765">        V5_4_2_SNAPSHOT,</span>
+<span class="nc" id="L766">        V5_4_2,</span>
+
+<span class="nc" id="L768">        V5_4_3_SNAPSHOT,</span>
+<span class="nc" id="L769">        V5_4_3,</span>
+
+<span class="nc" id="L771">        V5_4_4_SNAPSHOT,</span>
+<span class="nc" id="L772">        V5_4_4,</span>
+
+<span class="nc" id="L774">        V5_4_5_SNAPSHOT,</span>
+<span class="nc" id="L775">        V5_4_5,</span>
+
+<span class="nc" id="L777">        V5_4_6_SNAPSHOT,</span>
+<span class="nc" id="L778">        V5_4_6,</span>
+
+<span class="nc" id="L780">        V5_4_7_SNAPSHOT,</span>
+<span class="nc" id="L781">        V5_4_7,</span>
+
+<span class="nc" id="L783">        V5_4_8_SNAPSHOT,</span>
+<span class="nc" id="L784">        V5_4_8,</span>
+
+<span class="nc" id="L786">        V5_4_9_SNAPSHOT,</span>
+<span class="nc" id="L787">        V5_4_9,</span>
+
+<span class="nc" id="L789">        V5_5_0_SNAPSHOT,</span>
+<span class="nc" id="L790">        V5_5_0,</span>
+
+<span class="nc" id="L792">        V5_5_1_SNAPSHOT,</span>
+<span class="nc" id="L793">        V5_5_1,</span>
+
+<span class="nc" id="L795">        V5_5_2_SNAPSHOT,</span>
+<span class="nc" id="L796">        V5_5_2,</span>
+
+<span class="nc" id="L798">        V5_5_3_SNAPSHOT,</span>
+<span class="nc" id="L799">        V5_5_3,</span>
+
+<span class="nc" id="L801">        V5_5_4_SNAPSHOT,</span>
+<span class="nc" id="L802">        V5_5_4,</span>
+
+<span class="nc" id="L804">        V5_5_5_SNAPSHOT,</span>
+<span class="nc" id="L805">        V5_5_5,</span>
+
+<span class="nc" id="L807">        V5_5_6_SNAPSHOT,</span>
+<span class="nc" id="L808">        V5_5_6,</span>
+
+<span class="nc" id="L810">        V5_5_7_SNAPSHOT,</span>
+<span class="nc" id="L811">        V5_5_7,</span>
+
+<span class="nc" id="L813">        V5_5_8_SNAPSHOT,</span>
+<span class="nc" id="L814">        V5_5_8,</span>
+
+<span class="nc" id="L816">        V5_5_9_SNAPSHOT,</span>
+<span class="nc" id="L817">        V5_5_9,</span>
+
+<span class="nc" id="L819">        V5_6_0_SNAPSHOT,</span>
+<span class="nc" id="L820">        V5_6_0,</span>
+
+<span class="nc" id="L822">        V5_6_1_SNAPSHOT,</span>
+<span class="nc" id="L823">        V5_6_1,</span>
+
+<span class="nc" id="L825">        V5_6_2_SNAPSHOT,</span>
+<span class="nc" id="L826">        V5_6_2,</span>
+
+<span class="nc" id="L828">        V5_6_3_SNAPSHOT,</span>
+<span class="nc" id="L829">        V5_6_3,</span>
+
+<span class="nc" id="L831">        V5_6_4_SNAPSHOT,</span>
+<span class="nc" id="L832">        V5_6_4,</span>
+
+<span class="nc" id="L834">        V5_6_5_SNAPSHOT,</span>
+<span class="nc" id="L835">        V5_6_5,</span>
+
+<span class="nc" id="L837">        V5_6_6_SNAPSHOT,</span>
+<span class="nc" id="L838">        V5_6_6,</span>
+
+<span class="nc" id="L840">        V5_6_7_SNAPSHOT,</span>
+<span class="nc" id="L841">        V5_6_7,</span>
+
+<span class="nc" id="L843">        V5_6_8_SNAPSHOT,</span>
+<span class="nc" id="L844">        V5_6_8,</span>
+
+<span class="nc" id="L846">        V5_6_9_SNAPSHOT,</span>
+<span class="nc" id="L847">        V5_6_9,</span>
+
+<span class="nc" id="L849">        V5_7_0_SNAPSHOT,</span>
+<span class="nc" id="L850">        V5_7_0,</span>
+
+<span class="nc" id="L852">        V5_7_1_SNAPSHOT,</span>
+<span class="nc" id="L853">        V5_7_1,</span>
+
+<span class="nc" id="L855">        V5_7_2_SNAPSHOT,</span>
+<span class="nc" id="L856">        V5_7_2,</span>
+
+<span class="nc" id="L858">        V5_7_3_SNAPSHOT,</span>
+<span class="nc" id="L859">        V5_7_3,</span>
+
+<span class="nc" id="L861">        V5_7_4_SNAPSHOT,</span>
+<span class="nc" id="L862">        V5_7_4,</span>
+
+<span class="nc" id="L864">        V5_7_5_SNAPSHOT,</span>
+<span class="nc" id="L865">        V5_7_5,</span>
+
+<span class="nc" id="L867">        V5_7_6_SNAPSHOT,</span>
+<span class="nc" id="L868">        V5_7_6,</span>
+
+<span class="nc" id="L870">        V5_7_7_SNAPSHOT,</span>
+<span class="nc" id="L871">        V5_7_7,</span>
+
+<span class="nc" id="L873">        V5_7_8_SNAPSHOT,</span>
+<span class="nc" id="L874">        V5_7_8,</span>
+
+<span class="nc" id="L876">        V5_7_9_SNAPSHOT,</span>
+<span class="nc" id="L877">        V5_7_9,</span>
+
+<span class="nc" id="L879">        V5_8_0_SNAPSHOT,</span>
+<span class="nc" id="L880">        V5_8_0,</span>
+
+<span class="nc" id="L882">        V5_8_1_SNAPSHOT,</span>
+<span class="nc" id="L883">        V5_8_1,</span>
+
+<span class="nc" id="L885">        V5_8_2_SNAPSHOT,</span>
+<span class="nc" id="L886">        V5_8_2,</span>
+
+<span class="nc" id="L888">        V5_8_3_SNAPSHOT,</span>
+<span class="nc" id="L889">        V5_8_3,</span>
+
+<span class="nc" id="L891">        V5_8_4_SNAPSHOT,</span>
+<span class="nc" id="L892">        V5_8_4,</span>
+
+<span class="nc" id="L894">        V5_8_5_SNAPSHOT,</span>
+<span class="nc" id="L895">        V5_8_5,</span>
+
+<span class="nc" id="L897">        V5_8_6_SNAPSHOT,</span>
+<span class="nc" id="L898">        V5_8_6,</span>
+
+<span class="nc" id="L900">        V5_8_7_SNAPSHOT,</span>
+<span class="nc" id="L901">        V5_8_7,</span>
+
+<span class="nc" id="L903">        V5_8_8_SNAPSHOT,</span>
+<span class="nc" id="L904">        V5_8_8,</span>
+
+<span class="nc" id="L906">        V5_8_9_SNAPSHOT,</span>
+<span class="nc" id="L907">        V5_8_9,</span>
+
+<span class="nc" id="L909">        V5_9_0_SNAPSHOT,</span>
+<span class="nc" id="L910">        V5_9_0,</span>
+
+<span class="nc" id="L912">        V5_9_1_SNAPSHOT,</span>
+<span class="nc" id="L913">        V5_9_1,</span>
+
+<span class="nc" id="L915">        V5_9_2_SNAPSHOT,</span>
+<span class="nc" id="L916">        V5_9_2,</span>
+
+<span class="nc" id="L918">        V5_9_3_SNAPSHOT,</span>
+<span class="nc" id="L919">        V5_9_3,</span>
+
+<span class="nc" id="L921">        V5_9_4_SNAPSHOT,</span>
+<span class="nc" id="L922">        V5_9_4,</span>
+
+<span class="nc" id="L924">        V5_9_5_SNAPSHOT,</span>
+<span class="nc" id="L925">        V5_9_5,</span>
+
+<span class="nc" id="L927">        V5_9_6_SNAPSHOT,</span>
+<span class="nc" id="L928">        V5_9_6,</span>
+
+<span class="nc" id="L930">        V5_9_7_SNAPSHOT,</span>
+<span class="nc" id="L931">        V5_9_7,</span>
+
+<span class="nc" id="L933">        V5_9_8_SNAPSHOT,</span>
+<span class="nc" id="L934">        V5_9_8,</span>
+
+<span class="nc" id="L936">        V5_9_9_SNAPSHOT,</span>
+<span class="nc" id="L937">        V5_9_9,</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

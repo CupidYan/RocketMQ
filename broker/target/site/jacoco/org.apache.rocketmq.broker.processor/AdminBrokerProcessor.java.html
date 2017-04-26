@@ -1,0 +1,1246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AdminBrokerProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.processor</a> &gt; <span class="el_source">AdminBrokerProcessor.java</span></div><h1>AdminBrokerProcessor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker.processor;
+
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import java.io.UnsupportedEncodingException;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.broker.client.ClientChannelInfo;
+import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
+import org.apache.rocketmq.common.MQVersion;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.admin.ConsumeStats;
+import org.apache.rocketmq.common.admin.OffsetWrapper;
+import org.apache.rocketmq.common.admin.TopicOffset;
+import org.apache.rocketmq.common.admin.TopicStatsTable;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageId;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
+import org.apache.rocketmq.common.protocol.body.BrokerStatsItem;
+import org.apache.rocketmq.common.protocol.body.Connection;
+import org.apache.rocketmq.common.protocol.body.ConsumeStatsList;
+import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.common.protocol.body.GroupList;
+import org.apache.rocketmq.common.protocol.body.KVTable;
+import org.apache.rocketmq.common.protocol.body.LockBatchRequestBody;
+import org.apache.rocketmq.common.protocol.body.LockBatchResponseBody;
+import org.apache.rocketmq.common.protocol.body.ProducerConnection;
+import org.apache.rocketmq.common.protocol.body.QueryConsumeTimeSpanBody;
+import org.apache.rocketmq.common.protocol.body.QueryCorrectionOffsetBody;
+import org.apache.rocketmq.common.protocol.body.QueueTimeSpan;
+import org.apache.rocketmq.common.protocol.body.TopicList;
+import org.apache.rocketmq.common.protocol.body.UnlockBatchRequestBody;
+import org.apache.rocketmq.common.protocol.header.CloneGroupOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.ConsumeMessageDirectlyResultRequestHeader;
+import org.apache.rocketmq.common.protocol.header.CreateTopicRequestHeader;
+import org.apache.rocketmq.common.protocol.header.DeleteSubscriptionGroupRequestHeader;
+import org.apache.rocketmq.common.protocol.header.DeleteTopicRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetAllTopicConfigResponseHeader;
+import org.apache.rocketmq.common.protocol.header.GetBrokerConfigResponseHeader;
+import org.apache.rocketmq.common.protocol.header.GetConsumeStatsInBrokerHeader;
+import org.apache.rocketmq.common.protocol.header.GetConsumeStatsRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetConsumerConnectionListRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetConsumerRunningInfoRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetConsumerStatusRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetEarliestMsgStoretimeRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetEarliestMsgStoretimeResponseHeader;
+import org.apache.rocketmq.common.protocol.header.GetMaxOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetMaxOffsetResponseHeader;
+import org.apache.rocketmq.common.protocol.header.GetMinOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetMinOffsetResponseHeader;
+import org.apache.rocketmq.common.protocol.header.GetProducerConnectionListRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetTopicStatsInfoRequestHeader;
+import org.apache.rocketmq.common.protocol.header.QueryConsumeTimeSpanRequestHeader;
+import org.apache.rocketmq.common.protocol.header.QueryCorrectionOffsetHeader;
+import org.apache.rocketmq.common.protocol.header.QueryTopicConsumeByWhoRequestHeader;
+import org.apache.rocketmq.common.protocol.header.ResetOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SearchOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SearchOffsetResponseHeader;
+import org.apache.rocketmq.common.protocol.header.ViewBrokerStatsDataRequestHeader;
+import org.apache.rocketmq.common.protocol.header.filtersrv.RegisterFilterServerRequestHeader;
+import org.apache.rocketmq.common.protocol.header.filtersrv.RegisterFilterServerResponseHeader;
+import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
+import org.apache.rocketmq.common.stats.StatsItem;
+import org.apache.rocketmq.common.stats.StatsSnapshot;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
+import org.apache.rocketmq.store.DefaultMessageStore;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class AdminBrokerProcessor implements NettyRequestProcessor {
+<span class="fc" id="L110">    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+    private final BrokerController brokerController;
+
+<span class="fc" id="L113">    public AdminBrokerProcessor(final BrokerController brokerController) {</span>
+<span class="fc" id="L114">        this.brokerController = brokerController;</span>
+<span class="fc" id="L115">    }</span>
+
+    @Override
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc bnc" id="L119" title="All 36 branches missed.">        switch (request.getCode()) {</span>
+            case RequestCode.UPDATE_AND_CREATE_TOPIC:
+<span class="nc" id="L121">                return this.updateAndCreateTopic(ctx, request);</span>
+            case RequestCode.DELETE_TOPIC_IN_BROKER:
+<span class="nc" id="L123">                return this.deleteTopic(ctx, request);</span>
+            case RequestCode.GET_ALL_TOPIC_CONFIG:
+<span class="nc" id="L125">                return this.getAllTopicConfig(ctx, request);</span>
+            case RequestCode.UPDATE_BROKER_CONFIG:
+<span class="nc" id="L127">                return this.updateBrokerConfig(ctx, request);</span>
+            case RequestCode.GET_BROKER_CONFIG:
+<span class="nc" id="L129">                return this.getBrokerConfig(ctx, request);</span>
+            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP:
+<span class="nc" id="L131">                return this.searchOffsetByTimestamp(ctx, request);</span>
+            case RequestCode.GET_MAX_OFFSET:
+<span class="nc" id="L133">                return this.getMaxOffset(ctx, request);</span>
+            case RequestCode.GET_MIN_OFFSET:
+<span class="nc" id="L135">                return this.getMinOffset(ctx, request);</span>
+            case RequestCode.GET_EARLIEST_MSG_STORETIME:
+<span class="nc" id="L137">                return this.getEarliestMsgStoretime(ctx, request);</span>
+            case RequestCode.GET_BROKER_RUNTIME_INFO:
+<span class="nc" id="L139">                return this.getBrokerRuntimeInfo(ctx, request);</span>
+            case RequestCode.LOCK_BATCH_MQ:
+<span class="nc" id="L141">                return this.lockBatchMQ(ctx, request);</span>
+            case RequestCode.UNLOCK_BATCH_MQ:
+<span class="nc" id="L143">                return this.unlockBatchMQ(ctx, request);</span>
+            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP:
+<span class="nc" id="L145">                return this.updateAndCreateSubscriptionGroup(ctx, request);</span>
+            case RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG:
+<span class="nc" id="L147">                return this.getAllSubscriptionGroup(ctx, request);</span>
+            case RequestCode.DELETE_SUBSCRIPTIONGROUP:
+<span class="nc" id="L149">                return this.deleteSubscriptionGroup(ctx, request);</span>
+            case RequestCode.GET_TOPIC_STATS_INFO:
+<span class="nc" id="L151">                return this.getTopicStatsInfo(ctx, request);</span>
+            case RequestCode.GET_CONSUMER_CONNECTION_LIST:
+<span class="nc" id="L153">                return this.getConsumerConnectionList(ctx, request);</span>
+            case RequestCode.GET_PRODUCER_CONNECTION_LIST:
+<span class="nc" id="L155">                return this.getProducerConnectionList(ctx, request);</span>
+            case RequestCode.GET_CONSUME_STATS:
+<span class="nc" id="L157">                return this.getConsumeStats(ctx, request);</span>
+            case RequestCode.GET_ALL_CONSUMER_OFFSET:
+<span class="nc" id="L159">                return this.getAllConsumerOffset(ctx, request);</span>
+            case RequestCode.GET_ALL_DELAY_OFFSET:
+<span class="nc" id="L161">                return this.getAllDelayOffset(ctx, request);</span>
+            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET:
+<span class="nc" id="L163">                return this.resetOffset(ctx, request);</span>
+            case RequestCode.INVOKE_BROKER_TO_GET_CONSUMER_STATUS:
+<span class="nc" id="L165">                return this.getConsumerStatus(ctx, request);</span>
+            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO:
+<span class="nc" id="L167">                return this.queryTopicConsumeByWho(ctx, request);</span>
+            case RequestCode.REGISTER_FILTER_SERVER:
+<span class="nc" id="L169">                return this.registerFilterServer(ctx, request);</span>
+            case RequestCode.QUERY_CONSUME_TIME_SPAN:
+<span class="nc" id="L171">                return this.queryConsumeTimeSpan(ctx, request);</span>
+            case RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_BROKER:
+<span class="nc" id="L173">                return this.getSystemTopicListFromBroker(ctx, request);</span>
+            case RequestCode.CLEAN_EXPIRED_CONSUMEQUEUE:
+<span class="nc" id="L175">                return this.cleanExpiredConsumeQueue();</span>
+            case RequestCode.CLEAN_UNUSED_TOPIC:
+<span class="nc" id="L177">                return this.cleanUnusedTopic();</span>
+            case RequestCode.GET_CONSUMER_RUNNING_INFO:
+<span class="nc" id="L179">                return this.getConsumerRunningInfo(ctx, request);</span>
+            case RequestCode.QUERY_CORRECTION_OFFSET:
+<span class="nc" id="L181">                return this.queryCorrectionOffset(ctx, request);</span>
+            case RequestCode.CONSUME_MESSAGE_DIRECTLY:
+<span class="nc" id="L183">                return this.consumeMessageDirectly(ctx, request);</span>
+            case RequestCode.CLONE_GROUP_OFFSET:
+<span class="nc" id="L185">                return this.cloneGroupOffset(ctx, request);</span>
+            case RequestCode.VIEW_BROKER_STATS_DATA:
+<span class="nc" id="L187">                return ViewBrokerStatsData(ctx, request);</span>
+            case RequestCode.GET_BROKER_CONSUME_STATS:
+<span class="nc" id="L189">                return fetchAllConsumeStatsInBroker(ctx, request);</span>
+            default:
+                break;
+        }
+
+<span class="nc" id="L194">        return null;</span>
+    }
+
+    @Override
+    public boolean rejectRequest() {
+<span class="nc" id="L199">        return false;</span>
+    }
+
+    private RemotingCommand updateAndCreateTopic(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L203">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L204">        final CreateTopicRequestHeader requestHeader =</span>
+<span class="nc" id="L205">            (CreateTopicRequestHeader) request.decodeCommandCustomHeader(CreateTopicRequestHeader.class);</span>
+<span class="nc" id="L206">        log.info(&quot;updateAndCreateTopic called by {}&quot;, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));</span>
+
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (requestHeader.getTopic().equals(this.brokerController.getBrokerConfig().getBrokerClusterName())) {</span>
+<span class="nc" id="L209">            String errorMsg = &quot;the topic[&quot; + requestHeader.getTopic() + &quot;] is conflict with system reserved words.&quot;;</span>
+<span class="nc" id="L210">            log.warn(errorMsg);</span>
+<span class="nc" id="L211">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L212">            response.setRemark(errorMsg);</span>
+<span class="nc" id="L213">            return response;</span>
+        }
+
+        try {
+<span class="nc" id="L217">            response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L218">            response.setOpaque(request.getOpaque());</span>
+<span class="nc" id="L219">            response.markResponseType();</span>
+<span class="nc" id="L220">            response.setRemark(null);</span>
+<span class="nc" id="L221">            ctx.writeAndFlush(response);</span>
+<span class="nc" id="L222">        } catch (Exception e) {</span>
+<span class="nc" id="L223">        }</span>
+
+<span class="nc" id="L225">        TopicConfig topicConfig = new TopicConfig(requestHeader.getTopic());</span>
+<span class="nc" id="L226">        topicConfig.setReadQueueNums(requestHeader.getReadQueueNums());</span>
+<span class="nc" id="L227">        topicConfig.setWriteQueueNums(requestHeader.getWriteQueueNums());</span>
+<span class="nc" id="L228">        topicConfig.setTopicFilterType(requestHeader.getTopicFilterTypeEnum());</span>
+<span class="nc" id="L229">        topicConfig.setPerm(requestHeader.getPerm());</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());</span>
+
+<span class="nc" id="L232">        this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);</span>
+<span class="nc" id="L233">        this.brokerController.registerBrokerAll(false, true);</span>
+<span class="nc" id="L234">        return null;</span>
+    }
+
+    private RemotingCommand deleteTopic(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L238">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L239">        DeleteTopicRequestHeader requestHeader =</span>
+<span class="nc" id="L240">            (DeleteTopicRequestHeader) request.decodeCommandCustomHeader(DeleteTopicRequestHeader.class);</span>
+
+<span class="nc" id="L242">        log.info(&quot;deleteTopic called by {}&quot;, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));</span>
+
+<span class="nc" id="L244">        this.brokerController.getTopicConfigManager().deleteTopicConfig(requestHeader.getTopic());</span>
+<span class="nc" id="L245">        this.brokerController.getMessageStore()</span>
+<span class="nc" id="L246">            .cleanUnusedTopic(this.brokerController.getTopicConfigManager().getTopicConfigTable().keySet());</span>
+
+<span class="nc" id="L248">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L249">        response.setRemark(null);</span>
+<span class="nc" id="L250">        return response;</span>
+    }
+
+    private RemotingCommand getAllTopicConfig(ChannelHandlerContext ctx, RemotingCommand request) {
+<span class="nc" id="L254">        final RemotingCommand response = RemotingCommand.createResponseCommand(GetAllTopicConfigResponseHeader.class);</span>
+        // final GetAllTopicConfigResponseHeader responseHeader =
+        // (GetAllTopicConfigResponseHeader) response.readCustomHeader();
+
+<span class="nc" id="L258">        String content = this.brokerController.getTopicConfigManager().encode();</span>
+<span class="nc bnc" id="L259" title="All 4 branches missed.">        if (content != null &amp;&amp; content.length() &gt; 0) {</span>
+            try {
+<span class="nc" id="L261">                response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));</span>
+<span class="nc" id="L262">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L263">                log.error(&quot;&quot;, e);</span>
+
+<span class="nc" id="L265">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L266">                response.setRemark(&quot;UnsupportedEncodingException &quot; + e);</span>
+<span class="nc" id="L267">                return response;</span>
+<span class="nc" id="L268">            }</span>
+        } else {
+<span class="nc" id="L270">            log.error(&quot;No topic in this broker, client: {}&quot;, ctx.channel().remoteAddress());</span>
+<span class="nc" id="L271">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L272">            response.setRemark(&quot;No topic in this broker&quot;);</span>
+<span class="nc" id="L273">            return response;</span>
+        }
+
+<span class="nc" id="L276">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L277">        response.setRemark(null);</span>
+
+<span class="nc" id="L279">        return response;</span>
+    }
+
+    private RemotingCommand updateBrokerConfig(ChannelHandlerContext ctx, RemotingCommand request) {
+<span class="nc" id="L283">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+
+<span class="nc" id="L285">        log.info(&quot;updateBrokerConfig called by {}&quot;, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));</span>
+
+<span class="nc" id="L287">        byte[] body = request.getBody();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (body != null) {</span>
+            try {
+<span class="nc" id="L290">                String bodyStr = new String(body, MixAll.DEFAULT_CHARSET);</span>
+<span class="nc" id="L291">                Properties properties = MixAll.string2Properties(bodyStr);</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                if (properties != null) {</span>
+<span class="nc" id="L293">                    log.info(&quot;updateBrokerConfig, new config: [{}] client: {} &quot;, properties, ctx.channel().remoteAddress());</span>
+<span class="nc" id="L294">                    this.brokerController.getConfiguration().update(properties);</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">                    if (properties.containsKey(&quot;brokerPermission&quot;)) {</span>
+<span class="nc" id="L296">                        this.brokerController.registerBrokerAll(false, false);</span>
+<span class="nc" id="L297">                        this.brokerController.getTopicConfigManager().getDataVersion().nextVersion();</span>
+                    }
+                } else {
+<span class="nc" id="L300">                    log.error(&quot;string2Properties error&quot;);</span>
+<span class="nc" id="L301">                    response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L302">                    response.setRemark(&quot;string2Properties error&quot;);</span>
+<span class="nc" id="L303">                    return response;</span>
+                }
+<span class="nc" id="L305">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L306">                log.error(&quot;&quot;, e);</span>
+<span class="nc" id="L307">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L308">                response.setRemark(&quot;UnsupportedEncodingException &quot; + e);</span>
+<span class="nc" id="L309">                return response;</span>
+<span class="nc" id="L310">            }</span>
+        }
+
+<span class="nc" id="L313">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L314">        response.setRemark(null);</span>
+<span class="nc" id="L315">        return response;</span>
+    }
+
+    private RemotingCommand getBrokerConfig(ChannelHandlerContext ctx, RemotingCommand request) {
+
+<span class="nc" id="L320">        final RemotingCommand response = RemotingCommand.createResponseCommand(GetBrokerConfigResponseHeader.class);</span>
+<span class="nc" id="L321">        final GetBrokerConfigResponseHeader responseHeader = (GetBrokerConfigResponseHeader) response.readCustomHeader();</span>
+
+<span class="nc" id="L323">        String content = this.brokerController.getConfiguration().getAllConfigsFormatString();</span>
+<span class="nc bnc" id="L324" title="All 4 branches missed.">        if (content != null &amp;&amp; content.length() &gt; 0) {</span>
+            try {
+<span class="nc" id="L326">                response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));</span>
+<span class="nc" id="L327">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L328">                log.error(&quot;&quot;, e);</span>
+
+<span class="nc" id="L330">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L331">                response.setRemark(&quot;UnsupportedEncodingException &quot; + e);</span>
+<span class="nc" id="L332">                return response;</span>
+<span class="nc" id="L333">            }</span>
+        }
+
+<span class="nc" id="L336">        responseHeader.setVersion(this.brokerController.getConfiguration().getDataVersionJson());</span>
+
+<span class="nc" id="L338">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L339">        response.setRemark(null);</span>
+<span class="nc" id="L340">        return response;</span>
+    }
+
+    private RemotingCommand searchOffsetByTimestamp(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L344">        final RemotingCommand response = RemotingCommand.createResponseCommand(SearchOffsetResponseHeader.class);</span>
+<span class="nc" id="L345">        final SearchOffsetResponseHeader responseHeader = (SearchOffsetResponseHeader) response.readCustomHeader();</span>
+<span class="nc" id="L346">        final SearchOffsetRequestHeader requestHeader =</span>
+<span class="nc" id="L347">            (SearchOffsetRequestHeader) request.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);</span>
+
+<span class="nc" id="L349">        long offset = this.brokerController.getMessageStore().getOffsetInQueueByTime(requestHeader.getTopic(), requestHeader.getQueueId(),</span>
+<span class="nc" id="L350">            requestHeader.getTimestamp());</span>
+
+<span class="nc" id="L352">        responseHeader.setOffset(offset);</span>
+
+<span class="nc" id="L354">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L355">        response.setRemark(null);</span>
+<span class="nc" id="L356">        return response;</span>
+    }
+
+    private RemotingCommand getMaxOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L360">        final RemotingCommand response = RemotingCommand.createResponseCommand(GetMaxOffsetResponseHeader.class);</span>
+<span class="nc" id="L361">        final GetMaxOffsetResponseHeader responseHeader = (GetMaxOffsetResponseHeader) response.readCustomHeader();</span>
+<span class="nc" id="L362">        final GetMaxOffsetRequestHeader requestHeader =</span>
+<span class="nc" id="L363">            (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);</span>
+
+<span class="nc" id="L365">        long offset = this.brokerController.getMessageStore().getMaxOffsetInQuque(requestHeader.getTopic(), requestHeader.getQueueId());</span>
+
+<span class="nc" id="L367">        responseHeader.setOffset(offset);</span>
+
+<span class="nc" id="L369">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L370">        response.setRemark(null);</span>
+<span class="nc" id="L371">        return response;</span>
+    }
+
+    private RemotingCommand getMinOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L375">        final RemotingCommand response = RemotingCommand.createResponseCommand(GetMinOffsetResponseHeader.class);</span>
+<span class="nc" id="L376">        final GetMinOffsetResponseHeader responseHeader = (GetMinOffsetResponseHeader) response.readCustomHeader();</span>
+<span class="nc" id="L377">        final GetMinOffsetRequestHeader requestHeader =</span>
+<span class="nc" id="L378">            (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);</span>
+
+<span class="nc" id="L380">        long offset = this.brokerController.getMessageStore().getMinOffsetInQuque(requestHeader.getTopic(), requestHeader.getQueueId());</span>
+
+<span class="nc" id="L382">        responseHeader.setOffset(offset);</span>
+<span class="nc" id="L383">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L384">        response.setRemark(null);</span>
+<span class="nc" id="L385">        return response;</span>
+    }
+
+    private RemotingCommand getEarliestMsgStoretime(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L389">        final RemotingCommand response = RemotingCommand.createResponseCommand(GetEarliestMsgStoretimeResponseHeader.class);</span>
+<span class="nc" id="L390">        final GetEarliestMsgStoretimeResponseHeader responseHeader = (GetEarliestMsgStoretimeResponseHeader) response.readCustomHeader();</span>
+<span class="nc" id="L391">        final GetEarliestMsgStoretimeRequestHeader requestHeader =</span>
+<span class="nc" id="L392">            (GetEarliestMsgStoretimeRequestHeader) request.decodeCommandCustomHeader(GetEarliestMsgStoretimeRequestHeader.class);</span>
+
+<span class="nc" id="L394">        long timestamp =</span>
+<span class="nc" id="L395">            this.brokerController.getMessageStore().getEarliestMessageTime(requestHeader.getTopic(), requestHeader.getQueueId());</span>
+
+<span class="nc" id="L397">        responseHeader.setTimestamp(timestamp);</span>
+<span class="nc" id="L398">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L399">        response.setRemark(null);</span>
+<span class="nc" id="L400">        return response;</span>
+    }
+
+    private RemotingCommand getBrokerRuntimeInfo(ChannelHandlerContext ctx, RemotingCommand request) {
+<span class="nc" id="L404">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+
+<span class="nc" id="L406">        HashMap&lt;String, String&gt; runtimeInfo = this.prepareRuntimeInfo();</span>
+<span class="nc" id="L407">        KVTable kvTable = new KVTable();</span>
+<span class="nc" id="L408">        kvTable.setTable(runtimeInfo);</span>
+
+<span class="nc" id="L410">        byte[] body = kvTable.encode();</span>
+<span class="nc" id="L411">        response.setBody(body);</span>
+<span class="nc" id="L412">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L413">        response.setRemark(null);</span>
+<span class="nc" id="L414">        return response;</span>
+    }
+
+    private RemotingCommand lockBatchMQ(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L418">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L419">        LockBatchRequestBody requestBody = LockBatchRequestBody.decode(request.getBody(), LockBatchRequestBody.class);</span>
+
+<span class="nc" id="L421">        Set&lt;MessageQueue&gt; lockOKMQSet = this.brokerController.getRebalanceLockManager().tryLockBatch(//</span>
+<span class="nc" id="L422">            requestBody.getConsumerGroup(), //</span>
+<span class="nc" id="L423">            requestBody.getMqSet(), //</span>
+<span class="nc" id="L424">            requestBody.getClientId());</span>
+
+<span class="nc" id="L426">        LockBatchResponseBody responseBody = new LockBatchResponseBody();</span>
+<span class="nc" id="L427">        responseBody.setLockOKMQSet(lockOKMQSet);</span>
+
+<span class="nc" id="L429">        response.setBody(responseBody.encode());</span>
+<span class="nc" id="L430">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L431">        response.setRemark(null);</span>
+<span class="nc" id="L432">        return response;</span>
+    }
+
+    private RemotingCommand unlockBatchMQ(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L436">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L437">        UnlockBatchRequestBody requestBody = UnlockBatchRequestBody.decode(request.getBody(), UnlockBatchRequestBody.class);</span>
+
+<span class="nc" id="L439">        this.brokerController.getRebalanceLockManager().unlockBatch(//</span>
+<span class="nc" id="L440">            requestBody.getConsumerGroup(), //</span>
+<span class="nc" id="L441">            requestBody.getMqSet(), //</span>
+<span class="nc" id="L442">            requestBody.getClientId());</span>
+
+<span class="nc" id="L444">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L445">        response.setRemark(null);</span>
+<span class="nc" id="L446">        return response;</span>
+    }
+
+    private RemotingCommand updateAndCreateSubscriptionGroup(ChannelHandlerContext ctx, RemotingCommand request)
+        throws RemotingCommandException {
+<span class="nc" id="L451">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+
+<span class="nc" id="L453">        log.info(&quot;updateAndCreateSubscriptionGroup called by {}&quot;, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));</span>
+
+<span class="nc" id="L455">        SubscriptionGroupConfig config = RemotingSerializable.decode(request.getBody(), SubscriptionGroupConfig.class);</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">        if (config != null) {</span>
+<span class="nc" id="L457">            this.brokerController.getSubscriptionGroupManager().updateSubscriptionGroupConfig(config);</span>
+        }
+
+<span class="nc" id="L460">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L461">        response.setRemark(null);</span>
+<span class="nc" id="L462">        return response;</span>
+    }
+
+    private RemotingCommand getAllSubscriptionGroup(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L466">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L467">        String content = this.brokerController.getSubscriptionGroupManager().encode();</span>
+<span class="nc bnc" id="L468" title="All 4 branches missed.">        if (content != null &amp;&amp; content.length() &gt; 0) {</span>
+            try {
+<span class="nc" id="L470">                response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));</span>
+<span class="nc" id="L471">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L472">                log.error(&quot;&quot;, e);</span>
+
+<span class="nc" id="L474">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L475">                response.setRemark(&quot;UnsupportedEncodingException &quot; + e);</span>
+<span class="nc" id="L476">                return response;</span>
+<span class="nc" id="L477">            }</span>
+        } else {
+<span class="nc" id="L479">            log.error(&quot;No subscription group in this broker, client:{} &quot;, ctx.channel().remoteAddress());</span>
+<span class="nc" id="L480">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L481">            response.setRemark(&quot;No subscription group in this broker&quot;);</span>
+<span class="nc" id="L482">            return response;</span>
+        }
+
+<span class="nc" id="L485">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L486">        response.setRemark(null);</span>
+
+<span class="nc" id="L488">        return response;</span>
+    }
+
+    private RemotingCommand deleteSubscriptionGroup(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L492">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L493">        DeleteSubscriptionGroupRequestHeader requestHeader =</span>
+<span class="nc" id="L494">            (DeleteSubscriptionGroupRequestHeader) request.decodeCommandCustomHeader(DeleteSubscriptionGroupRequestHeader.class);</span>
+
+<span class="nc" id="L496">        log.info(&quot;deleteSubscriptionGroup called by {}&quot;, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));</span>
+
+<span class="nc" id="L498">        this.brokerController.getSubscriptionGroupManager().deleteSubscriptionGroupConfig(requestHeader.getGroupName());</span>
+
+<span class="nc" id="L500">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L501">        response.setRemark(null);</span>
+<span class="nc" id="L502">        return response;</span>
+    }
+
+    private RemotingCommand getTopicStatsInfo(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L506">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L507">        final GetTopicStatsInfoRequestHeader requestHeader =</span>
+<span class="nc" id="L508">            (GetTopicStatsInfoRequestHeader) request.decodeCommandCustomHeader(GetTopicStatsInfoRequestHeader.class);</span>
+
+<span class="nc" id="L510">        final String topic = requestHeader.getTopic();</span>
+<span class="nc" id="L511">        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">        if (null == topicConfig) {</span>
+<span class="nc" id="L513">            response.setCode(ResponseCode.TOPIC_NOT_EXIST);</span>
+<span class="nc" id="L514">            response.setRemark(&quot;topic[&quot; + topic + &quot;] not exist&quot;);</span>
+<span class="nc" id="L515">            return response;</span>
+        }
+
+<span class="nc" id="L518">        TopicStatsTable topicStatsTable = new TopicStatsTable();</span>
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        for (int i = 0; i &lt; topicConfig.getWriteQueueNums(); i++) {</span>
+<span class="nc" id="L520">            MessageQueue mq = new MessageQueue();</span>
+<span class="nc" id="L521">            mq.setTopic(topic);</span>
+<span class="nc" id="L522">            mq.setBrokerName(this.brokerController.getBrokerConfig().getBrokerName());</span>
+<span class="nc" id="L523">            mq.setQueueId(i);</span>
+
+<span class="nc" id="L525">            TopicOffset topicOffset = new TopicOffset();</span>
+<span class="nc" id="L526">            long min = this.brokerController.getMessageStore().getMinOffsetInQuque(topic, i);</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">            if (min &lt; 0)</span>
+<span class="nc" id="L528">                min = 0;</span>
+
+<span class="nc" id="L530">            long max = this.brokerController.getMessageStore().getMaxOffsetInQuque(topic, i);</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">            if (max &lt; 0)</span>
+<span class="nc" id="L532">                max = 0;</span>
+
+<span class="nc" id="L534">            long timestamp = 0;</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">            if (max &gt; 0) {</span>
+<span class="nc" id="L536">                timestamp = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, max - 1);</span>
+            }
+
+<span class="nc" id="L539">            topicOffset.setMinOffset(min);</span>
+<span class="nc" id="L540">            topicOffset.setMaxOffset(max);</span>
+<span class="nc" id="L541">            topicOffset.setLastUpdateTimestamp(timestamp);</span>
+
+<span class="nc" id="L543">            topicStatsTable.getOffsetTable().put(mq, topicOffset);</span>
+        }
+
+<span class="nc" id="L546">        byte[] body = topicStatsTable.encode();</span>
+<span class="nc" id="L547">        response.setBody(body);</span>
+<span class="nc" id="L548">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L549">        response.setRemark(null);</span>
+<span class="nc" id="L550">        return response;</span>
+    }
+
+    private RemotingCommand getConsumerConnectionList(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L554">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L555">        final GetConsumerConnectionListRequestHeader requestHeader =</span>
+<span class="nc" id="L556">            (GetConsumerConnectionListRequestHeader) request.decodeCommandCustomHeader(GetConsumerConnectionListRequestHeader.class);</span>
+
+<span class="nc" id="L558">        ConsumerGroupInfo consumerGroupInfo =</span>
+<span class="nc" id="L559">            this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());</span>
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        if (consumerGroupInfo != null) {</span>
+<span class="nc" id="L561">            ConsumerConnection bodydata = new ConsumerConnection();</span>
+<span class="nc" id="L562">            bodydata.setConsumeFromWhere(consumerGroupInfo.getConsumeFromWhere());</span>
+<span class="nc" id="L563">            bodydata.setConsumeType(consumerGroupInfo.getConsumeType());</span>
+<span class="nc" id="L564">            bodydata.setMessageModel(consumerGroupInfo.getMessageModel());</span>
+<span class="nc" id="L565">            bodydata.getSubscriptionTable().putAll(consumerGroupInfo.getSubscriptionTable());</span>
+
+<span class="nc" id="L567">            Iterator&lt;Map.Entry&lt;Channel, ClientChannelInfo&gt;&gt; it = consumerGroupInfo.getChannelInfoTable().entrySet().iterator();</span>
+<span class="nc bnc" id="L568" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L569">                ClientChannelInfo info = it.next().getValue();</span>
+<span class="nc" id="L570">                Connection connection = new Connection();</span>
+<span class="nc" id="L571">                connection.setClientId(info.getClientId());</span>
+<span class="nc" id="L572">                connection.setLanguage(info.getLanguage());</span>
+<span class="nc" id="L573">                connection.setVersion(info.getVersion());</span>
+<span class="nc" id="L574">                connection.setClientAddr(RemotingHelper.parseChannelRemoteAddr(info.getChannel()));</span>
+
+<span class="nc" id="L576">                bodydata.getConnectionSet().add(connection);</span>
+<span class="nc" id="L577">            }</span>
+
+<span class="nc" id="L579">            byte[] body = bodydata.encode();</span>
+<span class="nc" id="L580">            response.setBody(body);</span>
+<span class="nc" id="L581">            response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L582">            response.setRemark(null);</span>
+
+<span class="nc" id="L584">            return response;</span>
+        }
+
+<span class="nc" id="L587">        response.setCode(ResponseCode.CONSUMER_NOT_ONLINE);</span>
+<span class="nc" id="L588">        response.setRemark(&quot;the consumer group[&quot; + requestHeader.getConsumerGroup() + &quot;] not online&quot;);</span>
+<span class="nc" id="L589">        return response;</span>
+    }
+
+    private RemotingCommand getProducerConnectionList(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L593">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L594">        final GetProducerConnectionListRequestHeader requestHeader =</span>
+<span class="nc" id="L595">            (GetProducerConnectionListRequestHeader) request.decodeCommandCustomHeader(GetProducerConnectionListRequestHeader.class);</span>
+
+<span class="nc" id="L597">        ProducerConnection bodydata = new ProducerConnection();</span>
+<span class="nc" id="L598">        HashMap&lt;Channel, ClientChannelInfo&gt; channelInfoHashMap =</span>
+<span class="nc" id="L599">            this.brokerController.getProducerManager().getGroupChannelTable().get(requestHeader.getProducerGroup());</span>
+<span class="nc bnc" id="L600" title="All 2 branches missed.">        if (channelInfoHashMap != null) {</span>
+<span class="nc" id="L601">            Iterator&lt;Map.Entry&lt;Channel, ClientChannelInfo&gt;&gt; it = channelInfoHashMap.entrySet().iterator();</span>
+<span class="nc bnc" id="L602" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L603">                ClientChannelInfo info = it.next().getValue();</span>
+<span class="nc" id="L604">                Connection connection = new Connection();</span>
+<span class="nc" id="L605">                connection.setClientId(info.getClientId());</span>
+<span class="nc" id="L606">                connection.setLanguage(info.getLanguage());</span>
+<span class="nc" id="L607">                connection.setVersion(info.getVersion());</span>
+<span class="nc" id="L608">                connection.setClientAddr(RemotingHelper.parseChannelRemoteAddr(info.getChannel()));</span>
+
+<span class="nc" id="L610">                bodydata.getConnectionSet().add(connection);</span>
+<span class="nc" id="L611">            }</span>
+
+<span class="nc" id="L613">            byte[] body = bodydata.encode();</span>
+<span class="nc" id="L614">            response.setBody(body);</span>
+<span class="nc" id="L615">            response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L616">            response.setRemark(null);</span>
+<span class="nc" id="L617">            return response;</span>
+        }
+
+<span class="nc" id="L620">        response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L621">        response.setRemark(&quot;the producer group[&quot; + requestHeader.getProducerGroup() + &quot;] not exist&quot;);</span>
+<span class="nc" id="L622">        return response;</span>
+    }
+
+    private RemotingCommand getConsumeStats(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L626">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L627">        final GetConsumeStatsRequestHeader requestHeader =</span>
+<span class="nc" id="L628">            (GetConsumeStatsRequestHeader) request.decodeCommandCustomHeader(GetConsumeStatsRequestHeader.class);</span>
+
+<span class="nc" id="L630">        ConsumeStats consumeStats = new ConsumeStats();</span>
+
+<span class="nc" id="L632">        Set&lt;String&gt; topics = new HashSet&lt;String&gt;();</span>
+<span class="nc bnc" id="L633" title="All 2 branches missed.">        if (UtilAll.isBlank(requestHeader.getTopic())) {</span>
+<span class="nc" id="L634">            topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(requestHeader.getConsumerGroup());</span>
+        } else {
+<span class="nc" id="L636">            topics.add(requestHeader.getTopic());</span>
+        }
+
+<span class="nc bnc" id="L639" title="All 2 branches missed.">        for (String topic : topics) {</span>
+<span class="nc" id="L640">            TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">            if (null == topicConfig) {</span>
+<span class="nc" id="L642">                log.warn(&quot;consumeStats, topic config not exist, {}&quot;, topic);</span>
+<span class="nc" id="L643">                continue;</span>
+            }
+
+            /**
+
+             */
+            {
+<span class="nc" id="L650">                SubscriptionData findSubscriptionData =</span>
+<span class="nc" id="L651">                    this.brokerController.getConsumerManager().findSubscriptionData(requestHeader.getConsumerGroup(), topic);</span>
+
+<span class="nc bnc" id="L653" title="All 2 branches missed.">                if (null == findSubscriptionData //</span>
+<span class="nc bnc" id="L654" title="All 2 branches missed.">                    &amp;&amp; this.brokerController.getConsumerManager().findSubscriptionDataCount(requestHeader.getConsumerGroup()) &gt; 0) {</span>
+<span class="nc" id="L655">                    log.warn(&quot;consumeStats, the consumer group[{}], topic[{}] not exist&quot;, requestHeader.getConsumerGroup(), topic);</span>
+<span class="nc" id="L656">                    continue;</span>
+                }
+            }
+
+<span class="nc bnc" id="L660" title="All 2 branches missed.">            for (int i = 0; i &lt; topicConfig.getReadQueueNums(); i++) {</span>
+<span class="nc" id="L661">                MessageQueue mq = new MessageQueue();</span>
+<span class="nc" id="L662">                mq.setTopic(topic);</span>
+<span class="nc" id="L663">                mq.setBrokerName(this.brokerController.getBrokerConfig().getBrokerName());</span>
+<span class="nc" id="L664">                mq.setQueueId(i);</span>
+
+<span class="nc" id="L666">                OffsetWrapper offsetWrapper = new OffsetWrapper();</span>
+
+<span class="nc" id="L668">                long brokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQuque(topic, i);</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">                if (brokerOffset &lt; 0)</span>
+<span class="nc" id="L670">                    brokerOffset = 0;</span>
+
+<span class="nc" id="L672">                long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(//</span>
+<span class="nc" id="L673">                    requestHeader.getConsumerGroup(), //</span>
+                    topic, //
+                    i);
+<span class="nc bnc" id="L676" title="All 2 branches missed.">                if (consumerOffset &lt; 0)</span>
+<span class="nc" id="L677">                    consumerOffset = 0;</span>
+
+<span class="nc" id="L679">                offsetWrapper.setBrokerOffset(brokerOffset);</span>
+<span class="nc" id="L680">                offsetWrapper.setConsumerOffset(consumerOffset);</span>
+
+<span class="nc" id="L682">                long timeOffset = consumerOffset - 1;</span>
+<span class="nc bnc" id="L683" title="All 2 branches missed.">                if (timeOffset &gt;= 0) {</span>
+<span class="nc" id="L684">                    long lastTimestamp = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, timeOffset);</span>
+<span class="nc bnc" id="L685" title="All 2 branches missed.">                    if (lastTimestamp &gt; 0) {</span>
+<span class="nc" id="L686">                        offsetWrapper.setLastTimestamp(lastTimestamp);</span>
+                    }
+                }
+
+<span class="nc" id="L690">                consumeStats.getOffsetTable().put(mq, offsetWrapper);</span>
+            }
+
+<span class="nc" id="L693">            double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(requestHeader.getConsumerGroup(), topic);</span>
+
+<span class="nc" id="L695">            consumeTps += consumeStats.getConsumeTps();</span>
+<span class="nc" id="L696">            consumeStats.setConsumeTps(consumeTps);</span>
+<span class="nc" id="L697">        }</span>
+
+<span class="nc" id="L699">        byte[] body = consumeStats.encode();</span>
+<span class="nc" id="L700">        response.setBody(body);</span>
+<span class="nc" id="L701">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L702">        response.setRemark(null);</span>
+<span class="nc" id="L703">        return response;</span>
+    }
+
+    private RemotingCommand getAllConsumerOffset(ChannelHandlerContext ctx, RemotingCommand request) {
+<span class="nc" id="L707">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+
+<span class="nc" id="L709">        String content = this.brokerController.getConsumerOffsetManager().encode();</span>
+<span class="nc bnc" id="L710" title="All 4 branches missed.">        if (content != null &amp;&amp; content.length() &gt; 0) {</span>
+            try {
+<span class="nc" id="L712">                response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));</span>
+<span class="nc" id="L713">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L714">                log.error(&quot;get all consumer offset from master error.&quot;, e);</span>
+
+<span class="nc" id="L716">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L717">                response.setRemark(&quot;UnsupportedEncodingException &quot; + e);</span>
+<span class="nc" id="L718">                return response;</span>
+<span class="nc" id="L719">            }</span>
+        } else {
+<span class="nc" id="L721">            log.error(&quot;No consumer offset in this broker, client: {} &quot;, ctx.channel().remoteAddress());</span>
+<span class="nc" id="L722">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L723">            response.setRemark(&quot;No consumer offset in this broker&quot;);</span>
+<span class="nc" id="L724">            return response;</span>
+        }
+
+<span class="nc" id="L727">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L728">        response.setRemark(null);</span>
+
+<span class="nc" id="L730">        return response;</span>
+    }
+
+    private RemotingCommand getAllDelayOffset(ChannelHandlerContext ctx, RemotingCommand request) {
+<span class="nc" id="L734">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+
+<span class="nc" id="L736">        String content = ((DefaultMessageStore) this.brokerController.getMessageStore()).getScheduleMessageService().encode();</span>
+<span class="nc bnc" id="L737" title="All 4 branches missed.">        if (content != null &amp;&amp; content.length() &gt; 0) {</span>
+            try {
+<span class="nc" id="L739">                response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));</span>
+<span class="nc" id="L740">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L741">                log.error(&quot;get all delay offset from master error.&quot;, e);</span>
+
+<span class="nc" id="L743">                response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L744">                response.setRemark(&quot;UnsupportedEncodingException &quot; + e);</span>
+<span class="nc" id="L745">                return response;</span>
+<span class="nc" id="L746">            }</span>
+        } else {
+<span class="nc" id="L748">            log.error(&quot;No delay offset in this broker, client: {} &quot;, ctx.channel().remoteAddress());</span>
+<span class="nc" id="L749">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L750">            response.setRemark(&quot;No delay offset in this broker&quot;);</span>
+<span class="nc" id="L751">            return response;</span>
+        }
+
+<span class="nc" id="L754">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L755">        response.setRemark(null);</span>
+
+<span class="nc" id="L757">        return response;</span>
+    }
+
+    public RemotingCommand resetOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L761">        final ResetOffsetRequestHeader requestHeader =</span>
+<span class="nc" id="L762">            (ResetOffsetRequestHeader) request.decodeCommandCustomHeader(ResetOffsetRequestHeader.class);</span>
+<span class="nc" id="L763">        log.info(&quot;[reset-offset] reset offset started by {}. topic={}, group={}, timestamp={}, isForce={}&quot;,</span>
+<span class="nc" id="L764">            RemotingHelper.parseChannelRemoteAddr(ctx.channel()), requestHeader.getTopic(), requestHeader.getGroup(),</span>
+<span class="nc" id="L765">            requestHeader.getTimestamp(), requestHeader.isForce());</span>
+<span class="nc" id="L766">        boolean isC = false;</span>
+<span class="nc" id="L767">        LanguageCode language = request.getLanguage();</span>
+<span class="nc bnc" id="L768" title="All 2 branches missed.">        switch (language) {</span>
+            case CPP:
+<span class="nc" id="L770">                isC = true;</span>
+                break;
+        }
+<span class="nc" id="L773">        return this.brokerController.getBroker2Client().resetOffset(requestHeader.getTopic(), requestHeader.getGroup(),</span>
+<span class="nc" id="L774">            requestHeader.getTimestamp(), requestHeader.isForce(), isC);</span>
+    }
+
+    public RemotingCommand getConsumerStatus(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L778">        final GetConsumerStatusRequestHeader requestHeader =</span>
+<span class="nc" id="L779">            (GetConsumerStatusRequestHeader) request.decodeCommandCustomHeader(GetConsumerStatusRequestHeader.class);</span>
+
+<span class="nc" id="L781">        log.info(&quot;[get-consumer-status] get consumer status by {}. topic={}, group={}&quot;,</span>
+<span class="nc" id="L782">            RemotingHelper.parseChannelRemoteAddr(ctx.channel()), requestHeader.getTopic(), requestHeader.getGroup());</span>
+
+<span class="nc" id="L784">        return this.brokerController.getBroker2Client().getConsumeStatus(requestHeader.getTopic(), requestHeader.getGroup(),</span>
+<span class="nc" id="L785">            requestHeader.getClientAddr());</span>
+    }
+
+    private RemotingCommand queryTopicConsumeByWho(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L789">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L790">        QueryTopicConsumeByWhoRequestHeader requestHeader =</span>
+<span class="nc" id="L791">            (QueryTopicConsumeByWhoRequestHeader) request.decodeCommandCustomHeader(QueryTopicConsumeByWhoRequestHeader.class);</span>
+
+<span class="nc" id="L793">        HashSet&lt;String&gt; groups = this.brokerController.getConsumerManager().queryTopicConsumeByWho(requestHeader.getTopic());</span>
+
+<span class="nc" id="L795">        Set&lt;String&gt; groupInOffset = this.brokerController.getConsumerOffsetManager().whichGroupByTopic(requestHeader.getTopic());</span>
+<span class="nc bnc" id="L796" title="All 4 branches missed.">        if (groupInOffset != null &amp;&amp; !groupInOffset.isEmpty()) {</span>
+<span class="nc" id="L797">            groups.addAll(groupInOffset);</span>
+        }
+
+<span class="nc" id="L800">        GroupList groupList = new GroupList();</span>
+<span class="nc" id="L801">        groupList.setGroupList(groups);</span>
+<span class="nc" id="L802">        byte[] body = groupList.encode();</span>
+
+<span class="nc" id="L804">        response.setBody(body);</span>
+<span class="nc" id="L805">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L806">        response.setRemark(null);</span>
+<span class="nc" id="L807">        return response;</span>
+    }
+
+    private RemotingCommand registerFilterServer(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L811">        final RemotingCommand response = RemotingCommand.createResponseCommand(RegisterFilterServerResponseHeader.class);</span>
+<span class="nc" id="L812">        final RegisterFilterServerResponseHeader responseHeader = (RegisterFilterServerResponseHeader) response.readCustomHeader();</span>
+<span class="nc" id="L813">        final RegisterFilterServerRequestHeader requestHeader =</span>
+<span class="nc" id="L814">            (RegisterFilterServerRequestHeader) request.decodeCommandCustomHeader(RegisterFilterServerRequestHeader.class);</span>
+
+<span class="nc" id="L816">        this.brokerController.getFilterServerManager().registerFilterServer(ctx.channel(), requestHeader.getFilterServerAddr());</span>
+
+<span class="nc" id="L818">        responseHeader.setBrokerId(this.brokerController.getBrokerConfig().getBrokerId());</span>
+<span class="nc" id="L819">        responseHeader.setBrokerName(this.brokerController.getBrokerConfig().getBrokerName());</span>
+
+<span class="nc" id="L821">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L822">        response.setRemark(null);</span>
+<span class="nc" id="L823">        return response;</span>
+    }
+
+    private RemotingCommand queryConsumeTimeSpan(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L827">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L828">        QueryConsumeTimeSpanRequestHeader requestHeader =</span>
+<span class="nc" id="L829">            (QueryConsumeTimeSpanRequestHeader) request.decodeCommandCustomHeader(QueryConsumeTimeSpanRequestHeader.class);</span>
+
+<span class="nc" id="L831">        final String topic = requestHeader.getTopic();</span>
+<span class="nc" id="L832">        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);</span>
+<span class="nc bnc" id="L833" title="All 2 branches missed.">        if (null == topicConfig) {</span>
+<span class="nc" id="L834">            response.setCode(ResponseCode.TOPIC_NOT_EXIST);</span>
+<span class="nc" id="L835">            response.setRemark(&quot;topic[&quot; + topic + &quot;] not exist&quot;);</span>
+<span class="nc" id="L836">            return response;</span>
+        }
+
+<span class="nc" id="L839">        List&lt;QueueTimeSpan&gt; timeSpanSet = new ArrayList&lt;QueueTimeSpan&gt;();</span>
+<span class="nc bnc" id="L840" title="All 2 branches missed.">        for (int i = 0; i &lt; topicConfig.getWriteQueueNums(); i++) {</span>
+<span class="nc" id="L841">            QueueTimeSpan timeSpan = new QueueTimeSpan();</span>
+<span class="nc" id="L842">            MessageQueue mq = new MessageQueue();</span>
+<span class="nc" id="L843">            mq.setTopic(topic);</span>
+<span class="nc" id="L844">            mq.setBrokerName(this.brokerController.getBrokerConfig().getBrokerName());</span>
+<span class="nc" id="L845">            mq.setQueueId(i);</span>
+<span class="nc" id="L846">            timeSpan.setMessageQueue(mq);</span>
+
+<span class="nc" id="L848">            long minTime = this.brokerController.getMessageStore().getEarliestMessageTime(topic, i);</span>
+<span class="nc" id="L849">            timeSpan.setMinTimeStamp(minTime);</span>
+
+<span class="nc" id="L851">            long max = this.brokerController.getMessageStore().getMaxOffsetInQuque(topic, i);</span>
+<span class="nc" id="L852">            long maxTime = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, max - 1);</span>
+<span class="nc" id="L853">            timeSpan.setMaxTimeStamp(maxTime);</span>
+
+            long consumeTime;
+<span class="nc" id="L856">            long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(</span>
+<span class="nc" id="L857">                requestHeader.getGroup(), topic, i);</span>
+<span class="nc bnc" id="L858" title="All 2 branches missed.">            if (consumerOffset &gt; 0) {</span>
+<span class="nc" id="L859">                consumeTime = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, consumerOffset - 1);</span>
+            } else {
+<span class="nc" id="L861">                consumeTime = minTime;</span>
+            }
+<span class="nc" id="L863">            timeSpan.setConsumeTimeStamp(consumeTime);</span>
+
+<span class="nc" id="L865">            long maxBrokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQuque(requestHeader.getTopic(), i);</span>
+<span class="nc bnc" id="L866" title="All 2 branches missed.">            if (consumerOffset &lt; maxBrokerOffset) {</span>
+<span class="nc" id="L867">                long nextTime = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, consumerOffset);</span>
+<span class="nc" id="L868">                timeSpan.setDelayTime(System.currentTimeMillis() - nextTime);</span>
+            }
+<span class="nc" id="L870">            timeSpanSet.add(timeSpan);</span>
+        }
+
+<span class="nc" id="L873">        QueryConsumeTimeSpanBody queryConsumeTimeSpanBody = new QueryConsumeTimeSpanBody();</span>
+<span class="nc" id="L874">        queryConsumeTimeSpanBody.setConsumeTimeSpanSet(timeSpanSet);</span>
+<span class="nc" id="L875">        response.setBody(queryConsumeTimeSpanBody.encode());</span>
+<span class="nc" id="L876">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L877">        response.setRemark(null);</span>
+<span class="nc" id="L878">        return response;</span>
+    }
+
+    private RemotingCommand getSystemTopicListFromBroker(ChannelHandlerContext ctx, RemotingCommand request)
+        throws RemotingCommandException {
+<span class="nc" id="L883">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+
+<span class="nc" id="L885">        Set&lt;String&gt; topics = this.brokerController.getTopicConfigManager().getSystemTopic();</span>
+<span class="nc" id="L886">        TopicList topicList = new TopicList();</span>
+<span class="nc" id="L887">        topicList.setTopicList(topics);</span>
+<span class="nc" id="L888">        response.setBody(topicList.encode());</span>
+<span class="nc" id="L889">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L890">        response.setRemark(null);</span>
+<span class="nc" id="L891">        return response;</span>
+    }
+
+    public RemotingCommand cleanExpiredConsumeQueue() {
+<span class="nc" id="L895">        log.warn(&quot;invoke cleanExpiredConsumeQueue start.&quot;);</span>
+<span class="nc" id="L896">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L897">        brokerController.getMessageStore().cleanExpiredConsumerQueue();</span>
+<span class="nc" id="L898">        log.warn(&quot;invoke cleanExpiredConsumeQueue end.&quot;);</span>
+<span class="nc" id="L899">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L900">        response.setRemark(null);</span>
+<span class="nc" id="L901">        return response;</span>
+    }
+
+    public RemotingCommand cleanUnusedTopic() {
+<span class="nc" id="L905">        log.warn(&quot;invoke cleanUnusedTopic start.&quot;);</span>
+<span class="nc" id="L906">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L907">        brokerController.getMessageStore().cleanUnusedTopic(brokerController.getTopicConfigManager().getTopicConfigTable().keySet());</span>
+<span class="nc" id="L908">        log.warn(&quot;invoke cleanUnusedTopic end.&quot;);</span>
+<span class="nc" id="L909">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L910">        response.setRemark(null);</span>
+<span class="nc" id="L911">        return response;</span>
+    }
+
+    /**
+
+     */
+    private RemotingCommand getConsumerRunningInfo(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L918">        final GetConsumerRunningInfoRequestHeader requestHeader =</span>
+<span class="nc" id="L919">            (GetConsumerRunningInfoRequestHeader) request.decodeCommandCustomHeader(GetConsumerRunningInfoRequestHeader.class);</span>
+
+<span class="nc" id="L921">        return this.callConsumer(RequestCode.GET_CONSUMER_RUNNING_INFO, request, requestHeader.getConsumerGroup(),</span>
+<span class="nc" id="L922">            requestHeader.getClientId());</span>
+    }
+
+    private RemotingCommand queryCorrectionOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L926">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L927">        QueryCorrectionOffsetHeader requestHeader =</span>
+<span class="nc" id="L928">            (QueryCorrectionOffsetHeader) request.decodeCommandCustomHeader(QueryCorrectionOffsetHeader.class);</span>
+
+<span class="nc" id="L930">        Map&lt;Integer, Long&gt; correctionOffset = this.brokerController.getConsumerOffsetManager()</span>
+<span class="nc" id="L931">            .queryMinOffsetInAllGroup(requestHeader.getTopic(), requestHeader.getFilterGroups());</span>
+
+<span class="nc" id="L933">        Map&lt;Integer, Long&gt; compareOffset =</span>
+<span class="nc" id="L934">            this.brokerController.getConsumerOffsetManager().queryOffset(requestHeader.getTopic(), requestHeader.getCompareGroup());</span>
+
+<span class="nc bnc" id="L936" title="All 4 branches missed.">        if (compareOffset != null &amp;&amp; !compareOffset.isEmpty()) {</span>
+<span class="nc bnc" id="L937" title="All 2 branches missed.">            for (Map.Entry&lt;Integer, Long&gt; entry : compareOffset.entrySet()) {</span>
+<span class="nc" id="L938">                Integer queueId = entry.getKey();</span>
+<span class="nc" id="L939">                correctionOffset.put(queueId,</span>
+<span class="nc bnc" id="L940" title="All 2 branches missed.">                    correctionOffset.get(queueId) &gt; entry.getValue() ? Long.MAX_VALUE : correctionOffset.get(queueId));</span>
+<span class="nc" id="L941">            }</span>
+        }
+
+<span class="nc" id="L944">        QueryCorrectionOffsetBody body = new QueryCorrectionOffsetBody();</span>
+<span class="nc" id="L945">        body.setCorrectionOffsets(correctionOffset);</span>
+<span class="nc" id="L946">        response.setBody(body.encode());</span>
+<span class="nc" id="L947">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L948">        response.setRemark(null);</span>
+<span class="nc" id="L949">        return response;</span>
+    }
+
+    private RemotingCommand consumeMessageDirectly(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L953">        final ConsumeMessageDirectlyResultRequestHeader requestHeader = (ConsumeMessageDirectlyResultRequestHeader) request</span>
+<span class="nc" id="L954">            .decodeCommandCustomHeader(ConsumeMessageDirectlyResultRequestHeader.class);</span>
+
+<span class="nc" id="L956">        request.getExtFields().put(&quot;brokerName&quot;, this.brokerController.getBrokerConfig().getBrokerName());</span>
+<span class="nc" id="L957">        SelectMappedBufferResult selectMappedBufferResult = null;</span>
+        try {
+<span class="nc" id="L959">            MessageId messageId = MessageDecoder.decodeMessageId(requestHeader.getMsgId());</span>
+<span class="nc" id="L960">            selectMappedBufferResult = this.brokerController.getMessageStore().selectOneMessageByOffset(messageId.getOffset());</span>
+
+<span class="nc" id="L962">            byte[] body = new byte[selectMappedBufferResult.getSize()];</span>
+<span class="nc" id="L963">            selectMappedBufferResult.getByteBuffer().get(body);</span>
+<span class="nc" id="L964">            request.setBody(body);</span>
+<span class="nc" id="L965">        } catch (UnknownHostException e) {</span>
+        } finally {
+<span class="nc bnc" id="L967" title="All 6 branches missed.">            if (selectMappedBufferResult != null) {</span>
+<span class="nc" id="L968">                selectMappedBufferResult.release();</span>
+            }
+        }
+
+<span class="nc" id="L972">        return this.callConsumer(RequestCode.CONSUME_MESSAGE_DIRECTLY, request, requestHeader.getConsumerGroup(),</span>
+<span class="nc" id="L973">            requestHeader.getClientId());</span>
+    }
+
+    private RemotingCommand cloneGroupOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L977">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L978">        CloneGroupOffsetRequestHeader requestHeader =</span>
+<span class="nc" id="L979">            (CloneGroupOffsetRequestHeader) request.decodeCommandCustomHeader(CloneGroupOffsetRequestHeader.class);</span>
+
+        Set&lt;String&gt; topics;
+<span class="nc bnc" id="L982" title="All 2 branches missed.">        if (UtilAll.isBlank(requestHeader.getTopic())) {</span>
+<span class="nc" id="L983">            topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(requestHeader.getSrcGroup());</span>
+        } else {
+<span class="nc" id="L985">            topics = new HashSet&lt;String&gt;();</span>
+<span class="nc" id="L986">            topics.add(requestHeader.getTopic());</span>
+        }
+
+<span class="nc bnc" id="L989" title="All 2 branches missed.">        for (String topic : topics) {</span>
+<span class="nc" id="L990">            TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);</span>
+<span class="nc bnc" id="L991" title="All 2 branches missed.">            if (null == topicConfig) {</span>
+<span class="nc" id="L992">                log.warn(&quot;[cloneGroupOffset], topic config not exist, {}&quot;, topic);</span>
+<span class="nc" id="L993">                continue;</span>
+            }
+
+            /**
+
+             */
+<span class="nc bnc" id="L999" title="All 2 branches missed.">            if (!requestHeader.isOffline()) {</span>
+
+<span class="nc" id="L1001">                SubscriptionData findSubscriptionData =</span>
+<span class="nc" id="L1002">                    this.brokerController.getConsumerManager().findSubscriptionData(requestHeader.getSrcGroup(), topic);</span>
+<span class="nc bnc" id="L1003" title="All 4 branches missed.">                if (this.brokerController.getConsumerManager().findSubscriptionDataCount(requestHeader.getSrcGroup()) &gt; 0</span>
+                    &amp;&amp; findSubscriptionData == null) {
+<span class="nc" id="L1005">                    log.warn(&quot;[cloneGroupOffset], the consumer group[{}], topic[{}] not exist&quot;, requestHeader.getSrcGroup(), topic);</span>
+<span class="nc" id="L1006">                    continue;</span>
+                }
+            }
+
+<span class="nc" id="L1010">            this.brokerController.getConsumerOffsetManager().cloneOffset(requestHeader.getSrcGroup(), requestHeader.getDestGroup(),</span>
+<span class="nc" id="L1011">                requestHeader.getTopic());</span>
+<span class="nc" id="L1012">        }</span>
+
+<span class="nc" id="L1014">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L1015">        response.setRemark(null);</span>
+<span class="nc" id="L1016">        return response;</span>
+    }
+
+    private RemotingCommand ViewBrokerStatsData(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+<span class="nc" id="L1020">        final ViewBrokerStatsDataRequestHeader requestHeader =</span>
+<span class="nc" id="L1021">            (ViewBrokerStatsDataRequestHeader) request.decodeCommandCustomHeader(ViewBrokerStatsDataRequestHeader.class);</span>
+<span class="nc" id="L1022">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L1023">        DefaultMessageStore messageStore = (DefaultMessageStore) this.brokerController.getMessageStore();</span>
+
+<span class="nc" id="L1025">        StatsItem statsItem = messageStore.getBrokerStatsManager().getStatsItem(requestHeader.getStatsName(), requestHeader.getStatsKey());</span>
+<span class="nc bnc" id="L1026" title="All 2 branches missed.">        if (null == statsItem) {</span>
+<span class="nc" id="L1027">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L1028">            response.setRemark(String.format(&quot;The stats &lt;%s&gt; &lt;%s&gt; not exist&quot;, requestHeader.getStatsName(), requestHeader.getStatsKey()));</span>
+<span class="nc" id="L1029">            return response;</span>
+        }
+
+<span class="nc" id="L1032">        BrokerStatsData brokerStatsData = new BrokerStatsData();</span>
+
+        {
+<span class="nc" id="L1035">            BrokerStatsItem it = new BrokerStatsItem();</span>
+<span class="nc" id="L1036">            StatsSnapshot ss = statsItem.getStatsDataInMinute();</span>
+<span class="nc" id="L1037">            it.setSum(ss.getSum());</span>
+<span class="nc" id="L1038">            it.setTps(ss.getTps());</span>
+<span class="nc" id="L1039">            it.setAvgpt(ss.getAvgpt());</span>
+<span class="nc" id="L1040">            brokerStatsData.setStatsMinute(it);</span>
+        }
+
+        {
+<span class="nc" id="L1044">            BrokerStatsItem it = new BrokerStatsItem();</span>
+<span class="nc" id="L1045">            StatsSnapshot ss = statsItem.getStatsDataInHour();</span>
+<span class="nc" id="L1046">            it.setSum(ss.getSum());</span>
+<span class="nc" id="L1047">            it.setTps(ss.getTps());</span>
+<span class="nc" id="L1048">            it.setAvgpt(ss.getAvgpt());</span>
+<span class="nc" id="L1049">            brokerStatsData.setStatsHour(it);</span>
+        }
+
+        {
+<span class="nc" id="L1053">            BrokerStatsItem it = new BrokerStatsItem();</span>
+<span class="nc" id="L1054">            StatsSnapshot ss = statsItem.getStatsDataInDay();</span>
+<span class="nc" id="L1055">            it.setSum(ss.getSum());</span>
+<span class="nc" id="L1056">            it.setTps(ss.getTps());</span>
+<span class="nc" id="L1057">            it.setAvgpt(ss.getAvgpt());</span>
+<span class="nc" id="L1058">            brokerStatsData.setStatsDay(it);</span>
+        }
+
+<span class="nc" id="L1061">        response.setBody(brokerStatsData.encode());</span>
+<span class="nc" id="L1062">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L1063">        response.setRemark(null);</span>
+<span class="nc" id="L1064">        return response;</span>
+    }
+
+    private RemotingCommand fetchAllConsumeStatsInBroker(ChannelHandlerContext ctx, RemotingCommand request)
+        throws RemotingCommandException {
+<span class="nc" id="L1069">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L1070">        GetConsumeStatsInBrokerHeader requestHeader =</span>
+<span class="nc" id="L1071">            (GetConsumeStatsInBrokerHeader) request.decodeCommandCustomHeader(GetConsumeStatsInBrokerHeader.class);</span>
+<span class="nc" id="L1072">        boolean isOrder = requestHeader.isOrder();</span>
+<span class="nc" id="L1073">        ConcurrentHashMap&lt;String, SubscriptionGroupConfig&gt; subscriptionGroups =</span>
+<span class="nc" id="L1074">            brokerController.getSubscriptionGroupManager().getSubscriptionGroupTable();</span>
+
+<span class="nc" id="L1076">        List&lt;Map&lt;String/* subscriptionGroupName */, List&lt;ConsumeStats&gt;&gt;&gt; brokerConsumeStatsList =</span>
+            new ArrayList&lt;Map&lt;String, List&lt;ConsumeStats&gt;&gt;&gt;();
+
+<span class="nc" id="L1079">        long totalDiff = 0L;</span>
+
+<span class="nc bnc" id="L1081" title="All 2 branches missed.">        for (String group : subscriptionGroups.keySet()) {</span>
+<span class="nc" id="L1082">            Map&lt;String, List&lt;ConsumeStats&gt;&gt; subscripTopicConsumeMap = new HashMap&lt;String, List&lt;ConsumeStats&gt;&gt;();</span>
+<span class="nc" id="L1083">            Set&lt;String&gt; topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(group);</span>
+<span class="nc" id="L1084">            List&lt;ConsumeStats&gt; consumeStatsList = new ArrayList&lt;ConsumeStats&gt;();</span>
+<span class="nc bnc" id="L1085" title="All 2 branches missed.">            for (String topic : topics) {</span>
+<span class="nc" id="L1086">                ConsumeStats consumeStats = new ConsumeStats();</span>
+<span class="nc" id="L1087">                TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);</span>
+<span class="nc bnc" id="L1088" title="All 2 branches missed.">                if (null == topicConfig) {</span>
+<span class="nc" id="L1089">                    log.warn(&quot;consumeStats, topic config not exist, {}&quot;, topic);</span>
+<span class="nc" id="L1090">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L1093" title="All 4 branches missed.">                if (isOrder &amp;&amp; !topicConfig.isOrder()) {</span>
+<span class="nc" id="L1094">                    continue;</span>
+                }
+                /**
+
+                 */
+                {
+<span class="nc" id="L1100">                    SubscriptionData findSubscriptionData = this.brokerController.getConsumerManager().findSubscriptionData(group, topic);</span>
+
+<span class="nc bnc" id="L1102" title="All 2 branches missed.">                    if (null == findSubscriptionData //</span>
+<span class="nc bnc" id="L1103" title="All 2 branches missed.">                        &amp;&amp; this.brokerController.getConsumerManager().findSubscriptionDataCount(group) &gt; 0) {</span>
+<span class="nc" id="L1104">                        log.warn(&quot;consumeStats, the consumer group[{}], topic[{}] not exist&quot;, group, topic);</span>
+<span class="nc" id="L1105">                        continue;</span>
+                    }
+                }
+
+<span class="nc bnc" id="L1109" title="All 2 branches missed.">                for (int i = 0; i &lt; topicConfig.getWriteQueueNums(); i++) {</span>
+<span class="nc" id="L1110">                    MessageQueue mq = new MessageQueue();</span>
+<span class="nc" id="L1111">                    mq.setTopic(topic);</span>
+<span class="nc" id="L1112">                    mq.setBrokerName(this.brokerController.getBrokerConfig().getBrokerName());</span>
+<span class="nc" id="L1113">                    mq.setQueueId(i);</span>
+<span class="nc" id="L1114">                    OffsetWrapper offsetWrapper = new OffsetWrapper();</span>
+<span class="nc" id="L1115">                    long brokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQuque(topic, i);</span>
+<span class="nc bnc" id="L1116" title="All 2 branches missed.">                    if (brokerOffset &lt; 0)</span>
+<span class="nc" id="L1117">                        brokerOffset = 0;</span>
+<span class="nc" id="L1118">                    long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(//</span>
+                        group, //
+                        topic, //
+                        i);
+<span class="nc bnc" id="L1122" title="All 2 branches missed.">                    if (consumerOffset &lt; 0)</span>
+<span class="nc" id="L1123">                        consumerOffset = 0;</span>
+
+<span class="nc" id="L1125">                    offsetWrapper.setBrokerOffset(brokerOffset);</span>
+<span class="nc" id="L1126">                    offsetWrapper.setConsumerOffset(consumerOffset);</span>
+
+<span class="nc" id="L1128">                    long timeOffset = consumerOffset - 1;</span>
+<span class="nc bnc" id="L1129" title="All 2 branches missed.">                    if (timeOffset &gt;= 0) {</span>
+<span class="nc" id="L1130">                        long lastTimestamp = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, timeOffset);</span>
+<span class="nc bnc" id="L1131" title="All 2 branches missed.">                        if (lastTimestamp &gt; 0) {</span>
+<span class="nc" id="L1132">                            offsetWrapper.setLastTimestamp(lastTimestamp);</span>
+                        }
+                    }
+<span class="nc" id="L1135">                    consumeStats.getOffsetTable().put(mq, offsetWrapper);</span>
+                }
+<span class="nc" id="L1137">                double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(group, topic);</span>
+<span class="nc" id="L1138">                consumeTps += consumeStats.getConsumeTps();</span>
+<span class="nc" id="L1139">                consumeStats.setConsumeTps(consumeTps);</span>
+<span class="nc" id="L1140">                totalDiff += consumeStats.computeTotalDiff();</span>
+<span class="nc" id="L1141">                consumeStatsList.add(consumeStats);</span>
+<span class="nc" id="L1142">            }</span>
+<span class="nc" id="L1143">            subscripTopicConsumeMap.put(group, consumeStatsList);</span>
+<span class="nc" id="L1144">            brokerConsumeStatsList.add(subscripTopicConsumeMap);</span>
+<span class="nc" id="L1145">        }</span>
+<span class="nc" id="L1146">        ConsumeStatsList consumeStats = new ConsumeStatsList();</span>
+<span class="nc" id="L1147">        consumeStats.setBrokerAddr(brokerController.getBrokerAddr());</span>
+<span class="nc" id="L1148">        consumeStats.setConsumeStatsList(brokerConsumeStatsList);</span>
+<span class="nc" id="L1149">        consumeStats.setTotalDiff(totalDiff);</span>
+<span class="nc" id="L1150">        response.setBody(consumeStats.encode());</span>
+<span class="nc" id="L1151">        response.setCode(ResponseCode.SUCCESS);</span>
+<span class="nc" id="L1152">        response.setRemark(null);</span>
+<span class="nc" id="L1153">        return response;</span>
+    }
+
+    private HashMap&lt;String, String&gt; prepareRuntimeInfo() {
+<span class="nc" id="L1157">        HashMap&lt;String, String&gt; runtimeInfo = this.brokerController.getMessageStore().getRuntimeInfo();</span>
+<span class="nc" id="L1158">        runtimeInfo.put(&quot;brokerVersionDesc&quot;, MQVersion.getVersionDesc(MQVersion.CURRENT_VERSION));</span>
+<span class="nc" id="L1159">        runtimeInfo.put(&quot;brokerVersion&quot;, String.valueOf(MQVersion.CURRENT_VERSION));</span>
+
+<span class="nc" id="L1161">        runtimeInfo.put(&quot;msgPutTotalYesterdayMorning&quot;,</span>
+<span class="nc" id="L1162">            String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalYesterdayMorning()));</span>
+<span class="nc" id="L1163">        runtimeInfo.put(&quot;msgPutTotalTodayMorning&quot;, String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalTodayMorning()));</span>
+<span class="nc" id="L1164">        runtimeInfo.put(&quot;msgPutTotalTodayNow&quot;, String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalTodayNow()));</span>
+
+<span class="nc" id="L1166">        runtimeInfo.put(&quot;msgGetTotalYesterdayMorning&quot;,</span>
+<span class="nc" id="L1167">            String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalYesterdayMorning()));</span>
+<span class="nc" id="L1168">        runtimeInfo.put(&quot;msgGetTotalTodayMorning&quot;, String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalTodayMorning()));</span>
+<span class="nc" id="L1169">        runtimeInfo.put(&quot;msgGetTotalTodayNow&quot;, String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalTodayNow()));</span>
+
+<span class="nc" id="L1171">        runtimeInfo.put(&quot;sendThreadPoolQueueSize&quot;, String.valueOf(this.brokerController.getSendThreadPoolQueue().size()));</span>
+
+<span class="nc" id="L1173">        runtimeInfo.put(&quot;sendThreadPoolQueueCapacity&quot;,</span>
+<span class="nc" id="L1174">            String.valueOf(this.brokerController.getBrokerConfig().getSendThreadPoolQueueCapacity()));</span>
+
+<span class="nc" id="L1176">        runtimeInfo.put(&quot;pullThreadPoolQueueSize&quot;, String.valueOf(this.brokerController.getPullThreadPoolQueue().size()));</span>
+<span class="nc" id="L1177">        runtimeInfo.put(&quot;pullThreadPoolQueueCapacity&quot;,</span>
+<span class="nc" id="L1178">            String.valueOf(this.brokerController.getBrokerConfig().getPullThreadPoolQueueCapacity()));</span>
+
+<span class="nc" id="L1180">        runtimeInfo.put(&quot;dispatchBehindBytes&quot;, String.valueOf(this.brokerController.getMessageStore().dispatchBehindBytes()));</span>
+<span class="nc" id="L1181">        runtimeInfo.put(&quot;pageCacheLockTimeMills&quot;, String.valueOf(this.brokerController.getMessageStore().lockTimeMills()));</span>
+
+<span class="nc" id="L1183">        runtimeInfo.put(&quot;sendThreadPoolQueueHeadWaitTimeMills&quot;, String.valueOf(this.brokerController.headSlowTimeMills4SendThreadPoolQueue()));</span>
+<span class="nc" id="L1184">        runtimeInfo.put(&quot;pullThreadPoolQueueHeadWaitTimeMills&quot;, String.valueOf(this.brokerController.headSlowTimeMills4PullThreadPoolQueue()));</span>
+<span class="nc" id="L1185">        runtimeInfo.put(&quot;earliestMessageTimeStamp&quot;, String.valueOf(this.brokerController.getMessageStore().getEarliestMessageTime()));</span>
+<span class="nc" id="L1186">        runtimeInfo.put(&quot;startAcceptSendRequestTimeStamp&quot;, String.valueOf(this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp()));</span>
+<span class="nc bnc" id="L1187" title="All 2 branches missed.">        if (this.brokerController.getMessageStore() instanceof DefaultMessageStore) {</span>
+<span class="nc" id="L1188">            DefaultMessageStore defaultMessageStore = (DefaultMessageStore) this.brokerController.getMessageStore();</span>
+<span class="nc" id="L1189">            runtimeInfo.put(&quot;remainTransientStoreBufferNumbs&quot;, String.valueOf(defaultMessageStore.remainTransientStoreBufferNumbs()));</span>
+<span class="nc bnc" id="L1190" title="All 2 branches missed.">            if (defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {</span>
+<span class="nc" id="L1191">                runtimeInfo.put(&quot;remainHowManyDataToCommit&quot;, MixAll.humanReadableByteCount(defaultMessageStore.getCommitLog().remainHowManyDataToCommit(), false));</span>
+            }
+<span class="nc" id="L1193">            runtimeInfo.put(&quot;remainHowManyDataToFlush&quot;, MixAll.humanReadableByteCount(defaultMessageStore.getCommitLog().remainHowManyDataToFlush(), false));</span>
+        }
+
+<span class="nc" id="L1196">        java.io.File commitLogDir = new java.io.File(this.brokerController.getMessageStoreConfig().getStorePathRootDir());</span>
+<span class="nc bnc" id="L1197" title="All 2 branches missed.">        if (commitLogDir.exists()) {</span>
+<span class="nc" id="L1198">            runtimeInfo.put(&quot;commitLogDirCapacity&quot;, String.format(&quot;Total : %s, Free : %s.&quot;, MixAll.humanReadableByteCount(commitLogDir.getTotalSpace(), false), MixAll.humanReadableByteCount(commitLogDir.getFreeSpace(), false)));</span>
+        }
+
+<span class="nc" id="L1201">        return runtimeInfo;</span>
+    }
+
+    private RemotingCommand callConsumer(//
+        final int requestCode, //
+        final RemotingCommand request, //
+        final String consumerGroup, //
+        final String clientId) throws RemotingCommandException {
+<span class="nc" id="L1209">        final RemotingCommand response = RemotingCommand.createResponseCommand(null);</span>
+<span class="nc" id="L1210">        ClientChannelInfo clientChannelInfo = this.brokerController.getConsumerManager().findChannel(consumerGroup, clientId);</span>
+
+<span class="nc bnc" id="L1212" title="All 2 branches missed.">        if (null == clientChannelInfo) {</span>
+<span class="nc" id="L1213">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L1214">            response.setRemark(String.format(&quot;The Consumer &lt;%s&gt; &lt;%s&gt; not online&quot;, consumerGroup, clientId));</span>
+<span class="nc" id="L1215">            return response;</span>
+        }
+
+<span class="nc bnc" id="L1218" title="All 2 branches missed.">        if (clientChannelInfo.getVersion() &lt; MQVersion.Version.V3_1_8_SNAPSHOT.ordinal()) {</span>
+<span class="nc" id="L1219">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L1220">            response.setRemark(String.format(&quot;The Consumer &lt;%s&gt; Version &lt;%s&gt; too low to finish, please upgrade it to V3_1_8_SNAPSHOT&quot;, //</span>
+                clientId, //
+<span class="nc" id="L1222">                MQVersion.getVersionDesc(clientChannelInfo.getVersion())));</span>
+<span class="nc" id="L1223">            return response;</span>
+        }
+
+        try {
+<span class="nc" id="L1227">            RemotingCommand newRequest = RemotingCommand.createRequestCommand(requestCode, null);</span>
+<span class="nc" id="L1228">            newRequest.setExtFields(request.getExtFields());</span>
+<span class="nc" id="L1229">            newRequest.setBody(request.getBody());</span>
+
+<span class="nc" id="L1231">            return this.brokerController.getBroker2Client().callClient(clientChannelInfo.getChannel(), newRequest);</span>
+<span class="nc" id="L1232">        } catch (RemotingTimeoutException e) {</span>
+<span class="nc" id="L1233">            response.setCode(ResponseCode.CONSUME_MSG_TIMEOUT);</span>
+<span class="nc" id="L1234">            response</span>
+<span class="nc" id="L1235">                .setRemark(String.format(&quot;consumer &lt;%s&gt; &lt;%s&gt; Timeout: %s&quot;, consumerGroup, clientId, RemotingHelper.exceptionSimpleDesc(e)));</span>
+<span class="nc" id="L1236">            return response;</span>
+<span class="nc" id="L1237">        } catch (Exception e) {</span>
+<span class="nc" id="L1238">            response.setCode(ResponseCode.SYSTEM_ERROR);</span>
+<span class="nc" id="L1239">            response.setRemark(</span>
+<span class="nc" id="L1240">                String.format(&quot;invoke consumer &lt;%s&gt; &lt;%s&gt; Exception: %s&quot;, consumerGroup, clientId, RemotingHelper.exceptionSimpleDesc(e)));</span>
+<span class="nc" id="L1241">            return response;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

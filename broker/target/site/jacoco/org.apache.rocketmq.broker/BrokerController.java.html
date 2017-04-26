@@ -1,0 +1,788 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BrokerController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker</a> &gt; <span class="el_source">BrokerController.java</span></div><h1>BrokerController.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.broker;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import org.apache.rocketmq.broker.client.ClientHousekeepingService;
+import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
+import org.apache.rocketmq.broker.client.ConsumerManager;
+import org.apache.rocketmq.broker.client.DefaultConsumerIdsChangeListener;
+import org.apache.rocketmq.broker.client.ProducerManager;
+import org.apache.rocketmq.broker.client.net.Broker2Client;
+import org.apache.rocketmq.broker.client.rebalance.RebalanceLockManager;
+import org.apache.rocketmq.broker.filtersrv.FilterServerManager;
+import org.apache.rocketmq.broker.latency.BrokerFastFailure;
+import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
+import org.apache.rocketmq.broker.longpolling.NotifyMessageArrivingListener;
+import org.apache.rocketmq.broker.longpolling.PullRequestHoldService;
+import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
+import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
+import org.apache.rocketmq.broker.offset.ConsumerOffsetManager;
+import org.apache.rocketmq.broker.out.BrokerOuterAPI;
+import org.apache.rocketmq.broker.plugin.MessageStoreFactory;
+import org.apache.rocketmq.broker.plugin.MessageStorePluginContext;
+import org.apache.rocketmq.broker.processor.AdminBrokerProcessor;
+import org.apache.rocketmq.broker.processor.ClientManageProcessor;
+import org.apache.rocketmq.broker.processor.ConsumerManageProcessor;
+import org.apache.rocketmq.broker.processor.EndTransactionProcessor;
+import org.apache.rocketmq.broker.processor.PullMessageProcessor;
+import org.apache.rocketmq.broker.processor.QueryMessageProcessor;
+import org.apache.rocketmq.broker.processor.SendMessageProcessor;
+import org.apache.rocketmq.broker.slave.SlaveSynchronize;
+import org.apache.rocketmq.broker.subscription.SubscriptionGroupManager;
+import org.apache.rocketmq.broker.topic.TopicConfigManager;
+import org.apache.rocketmq.common.BrokerConfig;
+import org.apache.rocketmq.common.Configuration;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.namesrv.RegisterBrokerResult;
+import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
+import org.apache.rocketmq.common.stats.MomentStatsItem;
+import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.RemotingServer;
+import org.apache.rocketmq.remoting.netty.NettyClientConfig;
+import org.apache.rocketmq.remoting.netty.NettyRemotingServer;
+import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.netty.NettyServerConfig;
+import org.apache.rocketmq.remoting.netty.RequestTask;
+import org.apache.rocketmq.store.DefaultMessageStore;
+import org.apache.rocketmq.store.MessageArrivingListener;
+import org.apache.rocketmq.store.MessageStore;
+import org.apache.rocketmq.store.config.BrokerRole;
+import org.apache.rocketmq.store.config.MessageStoreConfig;
+import org.apache.rocketmq.store.stats.BrokerStats;
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class BrokerController {
+<span class="fc" id="L90">    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);</span>
+<span class="fc" id="L91">    private static final Logger LOG_PROTECTION = LoggerFactory.getLogger(LoggerName.PROTECTION_LOGGER_NAME);</span>
+<span class="fc" id="L92">    private static final Logger LOG_WATER_MARK = LoggerFactory.getLogger(LoggerName.WATER_MARK_LOGGER_NAME);</span>
+    private final BrokerConfig brokerConfig;
+    private final NettyServerConfig nettyServerConfig;
+    private final NettyClientConfig nettyClientConfig;
+    private final MessageStoreConfig messageStoreConfig;
+    private final ConsumerOffsetManager consumerOffsetManager;
+    private final ConsumerManager consumerManager;
+    private final ProducerManager producerManager;
+    private final ClientHousekeepingService clientHousekeepingService;
+    private final PullMessageProcessor pullMessageProcessor;
+    private final PullRequestHoldService pullRequestHoldService;
+    private final MessageArrivingListener messageArrivingListener;
+    private final Broker2Client broker2Client;
+    private final SubscriptionGroupManager subscriptionGroupManager;
+    private final ConsumerIdsChangeListener consumerIdsChangeListener;
+<span class="fc" id="L107">    private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();</span>
+    private final BrokerOuterAPI brokerOuterAPI;
+<span class="fc" id="L109">    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(</span>
+        &quot;BrokerControllerScheduledThread&quot;));
+    private final SlaveSynchronize slaveSynchronize;
+    private final BlockingQueue&lt;Runnable&gt; sendThreadPoolQueue;
+    private final BlockingQueue&lt;Runnable&gt; pullThreadPoolQueue;
+    private final BlockingQueue&lt;Runnable&gt; clientManagerThreadPoolQueue;
+    private final BlockingQueue&lt;Runnable&gt; consumerManagerThreadPoolQueue;
+    private final FilterServerManager filterServerManager;
+    private final BrokerStatsManager brokerStatsManager;
+<span class="fc" id="L118">    private final List&lt;SendMessageHook&gt; sendMessageHookList = new ArrayList&lt;SendMessageHook&gt;();</span>
+<span class="fc" id="L119">    private final List&lt;ConsumeMessageHook&gt; consumeMessageHookList = new ArrayList&lt;ConsumeMessageHook&gt;();</span>
+    private MessageStore messageStore;
+    private RemotingServer remotingServer;
+    private RemotingServer fastRemotingServer;
+    private TopicConfigManager topicConfigManager;
+    private ExecutorService sendMessageExecutor;
+    private ExecutorService pullMessageExecutor;
+    private ExecutorService adminBrokerExecutor;
+    private ExecutorService clientManageExecutor;
+    private ExecutorService consumerManageExecutor;
+<span class="fc" id="L129">    private boolean updateMasterHAServerAddrPeriodically = false;</span>
+    private BrokerStats brokerStats;
+    private InetSocketAddress storeHost;
+    private BrokerFastFailure brokerFastFailure;
+    private Configuration configuration;
+
+    public BrokerController(//
+        final BrokerConfig brokerConfig, //
+        final NettyServerConfig nettyServerConfig, //
+        final NettyClientConfig nettyClientConfig, //
+        final MessageStoreConfig messageStoreConfig //
+<span class="fc" id="L140">    ) {</span>
+<span class="fc" id="L141">        this.brokerConfig = brokerConfig;</span>
+<span class="fc" id="L142">        this.nettyServerConfig = nettyServerConfig;</span>
+<span class="fc" id="L143">        this.nettyClientConfig = nettyClientConfig;</span>
+<span class="fc" id="L144">        this.messageStoreConfig = messageStoreConfig;</span>
+<span class="fc" id="L145">        this.consumerOffsetManager = new ConsumerOffsetManager(this);</span>
+<span class="fc" id="L146">        this.topicConfigManager = new TopicConfigManager(this);</span>
+<span class="fc" id="L147">        this.pullMessageProcessor = new PullMessageProcessor(this);</span>
+<span class="fc" id="L148">        this.pullRequestHoldService = new PullRequestHoldService(this);</span>
+<span class="fc" id="L149">        this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);</span>
+<span class="fc" id="L150">        this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);</span>
+<span class="fc" id="L151">        this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);</span>
+<span class="fc" id="L152">        this.producerManager = new ProducerManager();</span>
+<span class="fc" id="L153">        this.clientHousekeepingService = new ClientHousekeepingService(this);</span>
+<span class="fc" id="L154">        this.broker2Client = new Broker2Client(this);</span>
+<span class="fc" id="L155">        this.subscriptionGroupManager = new SubscriptionGroupManager(this);</span>
+<span class="fc" id="L156">        this.brokerOuterAPI = new BrokerOuterAPI(nettyClientConfig);</span>
+<span class="fc" id="L157">        this.filterServerManager = new FilterServerManager(this);</span>
+
+<span class="fc" id="L159">        this.slaveSynchronize = new SlaveSynchronize(this);</span>
+
+<span class="fc" id="L161">        this.sendThreadPoolQueue = new LinkedBlockingQueue&lt;Runnable&gt;(this.brokerConfig.getSendThreadPoolQueueCapacity());</span>
+
+<span class="fc" id="L163">        this.pullThreadPoolQueue = new LinkedBlockingQueue&lt;Runnable&gt;(this.brokerConfig.getPullThreadPoolQueueCapacity());</span>
+<span class="fc" id="L164">        this.clientManagerThreadPoolQueue = new LinkedBlockingQueue&lt;Runnable&gt;(this.brokerConfig.getClientManagerThreadPoolQueueCapacity());</span>
+<span class="fc" id="L165">        this.consumerManagerThreadPoolQueue = new LinkedBlockingQueue&lt;Runnable&gt;(this.brokerConfig.getConsumerManagerThreadPoolQueueCapacity());</span>
+
+<span class="fc" id="L167">        this.brokerStatsManager = new BrokerStatsManager(this.brokerConfig.getBrokerClusterName());</span>
+<span class="fc" id="L168">        this.setStoreHost(new InetSocketAddress(this.getBrokerConfig().getBrokerIP1(), this.getNettyServerConfig().getListenPort()));</span>
+
+<span class="fc" id="L170">        this.brokerFastFailure = new BrokerFastFailure(this);</span>
+<span class="fc" id="L171">        this.configuration = new Configuration(</span>
+            log,
+<span class="fc" id="L173">            BrokerPathConfigHelper.getBrokerConfigPath(),</span>
+            this.brokerConfig, this.nettyServerConfig, this.nettyClientConfig, this.messageStoreConfig
+        );
+<span class="fc" id="L176">    }</span>
+
+    public BrokerConfig getBrokerConfig() {
+<span class="fc" id="L179">        return brokerConfig;</span>
+    }
+
+    public NettyServerConfig getNettyServerConfig() {
+<span class="fc" id="L183">        return nettyServerConfig;</span>
+    }
+
+    public BlockingQueue&lt;Runnable&gt; getPullThreadPoolQueue() {
+<span class="nc" id="L187">        return pullThreadPoolQueue;</span>
+    }
+
+    public boolean initialize() throws CloneNotSupportedException {
+<span class="fc" id="L191">        boolean result = true;</span>
+
+<span class="pc bpc" id="L193" title="2 of 4 branches missed.">        result = result &amp;&amp; this.topicConfigManager.load();</span>
+
+<span class="pc bpc" id="L195" title="2 of 4 branches missed.">        result = result &amp;&amp; this.consumerOffsetManager.load();</span>
+<span class="pc bpc" id="L196" title="2 of 4 branches missed.">        result = result &amp;&amp; this.subscriptionGroupManager.load();</span>
+
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        if (result) {</span>
+            try {
+<span class="fc" id="L200">                this.messageStore =</span>
+                    new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener,
+                        this.brokerConfig);
+<span class="fc" id="L203">                this.brokerStats = new BrokerStats((DefaultMessageStore) this.messageStore);</span>
+                //load plugin
+<span class="fc" id="L205">                MessageStorePluginContext context = new MessageStorePluginContext(messageStoreConfig, brokerStatsManager, messageArrivingListener, brokerConfig);</span>
+<span class="fc" id="L206">                this.messageStore = MessageStoreFactory.build(context, this.messageStore);</span>
+<span class="nc" id="L207">            } catch (IOException e) {</span>
+<span class="nc" id="L208">                result = false;</span>
+<span class="nc" id="L209">                e.printStackTrace();</span>
+<span class="fc" id="L210">            }</span>
+        }
+
+<span class="pc bpc" id="L213" title="2 of 4 branches missed.">        result = result &amp;&amp; this.messageStore.load();</span>
+
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (result) {</span>
+<span class="fc" id="L216">            this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);</span>
+<span class="fc" id="L217">            NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();</span>
+<span class="fc" id="L218">            fastConfig.setListenPort(nettyServerConfig.getListenPort() - 2);</span>
+<span class="fc" id="L219">            this.fastRemotingServer = new NettyRemotingServer(fastConfig, this.clientHousekeepingService);</span>
+<span class="fc" id="L220">            this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(</span>
+<span class="fc" id="L221">                this.brokerConfig.getSendMessageThreadPoolNums(),</span>
+<span class="fc" id="L222">                this.brokerConfig.getSendMessageThreadPoolNums(),</span>
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.sendThreadPoolQueue,
+                new ThreadFactoryImpl(&quot;SendMessageThread_&quot;));
+
+<span class="fc" id="L228">            this.pullMessageExecutor = new BrokerFixedThreadPoolExecutor(</span>
+<span class="fc" id="L229">                this.brokerConfig.getPullMessageThreadPoolNums(),</span>
+<span class="fc" id="L230">                this.brokerConfig.getPullMessageThreadPoolNums(),</span>
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.pullThreadPoolQueue,
+                new ThreadFactoryImpl(&quot;PullMessageThread_&quot;));
+
+<span class="fc" id="L236">            this.adminBrokerExecutor =</span>
+<span class="fc" id="L237">                Executors.newFixedThreadPool(this.brokerConfig.getAdminBrokerThreadPoolNums(), new ThreadFactoryImpl(</span>
+                    &quot;AdminBrokerThread_&quot;));
+
+<span class="fc" id="L240">            this.clientManageExecutor = new ThreadPoolExecutor(</span>
+<span class="fc" id="L241">                this.brokerConfig.getClientManageThreadPoolNums(),</span>
+<span class="fc" id="L242">                this.brokerConfig.getClientManageThreadPoolNums(),</span>
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.clientManagerThreadPoolQueue,
+                new ThreadFactoryImpl(&quot;ClientManageThread_&quot;));
+
+<span class="fc" id="L248">            this.consumerManageExecutor =</span>
+<span class="fc" id="L249">                Executors.newFixedThreadPool(this.brokerConfig.getConsumerManageThreadPoolNums(), new ThreadFactoryImpl(</span>
+                    &quot;ConsumerManageThread_&quot;));
+
+<span class="fc" id="L252">            this.registerProcessor();</span>
+
+            // TODO remove in future
+<span class="fc" id="L255">            final long initialDelay = UtilAll.computNextMorningTimeMillis() - System.currentTimeMillis();</span>
+<span class="fc" id="L256">            final long period = 1000 * 60 * 60 * 24;</span>
+<span class="fc" id="L257">            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+                @Override
+                public void run() {
+                    try {
+<span class="nc" id="L261">                        BrokerController.this.getBrokerStats().record();</span>
+<span class="nc" id="L262">                    } catch (Throwable e) {</span>
+<span class="nc" id="L263">                        log.error(&quot;schedule record error.&quot;, e);</span>
+<span class="nc" id="L264">                    }</span>
+<span class="nc" id="L265">                }</span>
+            }, initialDelay, period, TimeUnit.MILLISECONDS);
+
+<span class="fc" id="L268">            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+                @Override
+                public void run() {
+                    try {
+<span class="nc" id="L272">                        BrokerController.this.consumerOffsetManager.persist();</span>
+<span class="nc" id="L273">                    } catch (Throwable e) {</span>
+<span class="nc" id="L274">                        log.error(&quot;schedule persist consumerOffset error.&quot;, e);</span>
+<span class="nc" id="L275">                    }</span>
+<span class="nc" id="L276">                }</span>
+<span class="fc" id="L277">            }, 1000 * 10, this.brokerConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);</span>
+
+<span class="fc" id="L279">            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+                @Override
+                public void run() {
+                    try {
+<span class="nc" id="L283">                        BrokerController.this.protectBroker();</span>
+<span class="nc" id="L284">                    } catch (Exception e) {</span>
+<span class="nc" id="L285">                        log.error(&quot;protectBroker error.&quot;, e);</span>
+<span class="nc" id="L286">                    }</span>
+<span class="nc" id="L287">                }</span>
+            }, 3, 3, TimeUnit.MINUTES);
+
+<span class="fc" id="L290">            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+                @Override
+                public void run() {
+                    try {
+<span class="nc" id="L294">                        BrokerController.this.printWaterMark();</span>
+<span class="nc" id="L295">                    } catch (Exception e) {</span>
+<span class="nc" id="L296">                        log.error(&quot;printWaterMark error.&quot;, e);</span>
+<span class="nc" id="L297">                    }</span>
+<span class="nc" id="L298">                }</span>
+            }, 10, 1, TimeUnit.SECONDS);
+
+<span class="fc" id="L301">            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+                @Override
+                public void run() {
+                    try {
+<span class="nc" id="L306">                        log.info(&quot;dispatch behind commit log {} bytes&quot;, BrokerController.this.getMessageStore().dispatchBehindBytes());</span>
+<span class="nc" id="L307">                    } catch (Throwable e) {</span>
+<span class="nc" id="L308">                        log.error(&quot;schedule dispatchBehindBytes error.&quot;, e);</span>
+<span class="nc" id="L309">                    }</span>
+<span class="nc" id="L310">                }</span>
+            }, 1000 * 10, 1000 * 60, TimeUnit.MILLISECONDS);
+
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">            if (this.brokerConfig.getNamesrvAddr() != null) {</span>
+<span class="nc" id="L314">                this.brokerOuterAPI.updateNameServerAddressList(this.brokerConfig.getNamesrvAddr());</span>
+<span class="nc" id="L315">                log.info(&quot;Set user specified name server address: {}&quot;, this.brokerConfig.getNamesrvAddr());</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">            } else if (this.brokerConfig.isFetchNamesrvAddrByAddressServer()) {</span>
+<span class="nc" id="L317">                this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+                        try {
+<span class="nc" id="L322">                            BrokerController.this.brokerOuterAPI.fetchNameServerAddr();</span>
+<span class="nc" id="L323">                        } catch (Throwable e) {</span>
+<span class="nc" id="L324">                            log.error(&quot;ScheduledTask fetchNameServerAddr exception&quot;, e);</span>
+<span class="nc" id="L325">                        }</span>
+<span class="nc" id="L326">                    }</span>
+                }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
+            }
+
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">            if (BrokerRole.SLAVE == this.messageStoreConfig.getBrokerRole()) {</span>
+<span class="nc bnc" id="L331" title="All 4 branches missed.">                if (this.messageStoreConfig.getHaMasterAddress() != null &amp;&amp; this.messageStoreConfig.getHaMasterAddress().length() &gt;= 6) {</span>
+<span class="nc" id="L332">                    this.messageStore.updateHaMasterAddress(this.messageStoreConfig.getHaMasterAddress());</span>
+<span class="nc" id="L333">                    this.updateMasterHAServerAddrPeriodically = false;</span>
+                } else {
+<span class="nc" id="L335">                    this.updateMasterHAServerAddrPeriodically = true;</span>
+                }
+
+<span class="nc" id="L338">                this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+                        try {
+<span class="nc" id="L343">                            BrokerController.this.slaveSynchronize.syncAll();</span>
+<span class="nc" id="L344">                        } catch (Throwable e) {</span>
+<span class="nc" id="L345">                            log.error(&quot;ScheduledTask syncAll slave exception&quot;, e);</span>
+<span class="nc" id="L346">                        }</span>
+<span class="nc" id="L347">                    }</span>
+                }, 1000 * 10, 1000 * 60, TimeUnit.MILLISECONDS);
+            } else {
+<span class="fc" id="L350">                this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+                    @Override
+                    public void run() {
+                        try {
+<span class="nc" id="L355">                            BrokerController.this.printMasterAndSlaveDiff();</span>
+<span class="nc" id="L356">                        } catch (Throwable e) {</span>
+<span class="nc" id="L357">                            log.error(&quot;schedule printMasterAndSlaveDiff error.&quot;, e);</span>
+<span class="nc" id="L358">                        }</span>
+<span class="nc" id="L359">                    }</span>
+                }, 1000 * 10, 1000 * 60, TimeUnit.MILLISECONDS);
+            }
+        }
+
+<span class="fc" id="L364">        return result;</span>
+    }
+
+    public void registerProcessor() {
+        /**
+         * SendMessageProcessor
+         */
+<span class="fc" id="L371">        SendMessageProcessor sendProcessor = new SendMessageProcessor(this);</span>
+<span class="fc" id="L372">        sendProcessor.registerSendMessageHook(sendMessageHookList);</span>
+<span class="fc" id="L373">        sendProcessor.registerConsumeMessageHook(consumeMessageHookList);</span>
+
+<span class="fc" id="L375">        this.remotingServer.registerProcessor(RequestCode.SEND_MESSAGE, sendProcessor, this.sendMessageExecutor);</span>
+<span class="fc" id="L376">        this.remotingServer.registerProcessor(RequestCode.SEND_MESSAGE_V2, sendProcessor, this.sendMessageExecutor);</span>
+<span class="fc" id="L377">        this.remotingServer.registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, sendProcessor, this.sendMessageExecutor);</span>
+<span class="fc" id="L378">        this.fastRemotingServer.registerProcessor(RequestCode.SEND_MESSAGE, sendProcessor, this.sendMessageExecutor);</span>
+<span class="fc" id="L379">        this.fastRemotingServer.registerProcessor(RequestCode.SEND_MESSAGE_V2, sendProcessor, this.sendMessageExecutor);</span>
+<span class="fc" id="L380">        this.fastRemotingServer.registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, sendProcessor, this.sendMessageExecutor);</span>
+        /**
+         * PullMessageProcessor
+         */
+<span class="fc" id="L384">        this.remotingServer.registerProcessor(RequestCode.PULL_MESSAGE, this.pullMessageProcessor, this.pullMessageExecutor);</span>
+<span class="fc" id="L385">        this.pullMessageProcessor.registerConsumeMessageHook(consumeMessageHookList);</span>
+
+        /**
+         * QueryMessageProcessor
+         */
+<span class="fc" id="L390">        NettyRequestProcessor queryProcessor = new QueryMessageProcessor(this);</span>
+<span class="fc" id="L391">        this.remotingServer.registerProcessor(RequestCode.QUERY_MESSAGE, queryProcessor, this.pullMessageExecutor);</span>
+<span class="fc" id="L392">        this.remotingServer.registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, queryProcessor, this.pullMessageExecutor);</span>
+
+<span class="fc" id="L394">        this.fastRemotingServer.registerProcessor(RequestCode.QUERY_MESSAGE, queryProcessor, this.pullMessageExecutor);</span>
+<span class="fc" id="L395">        this.fastRemotingServer.registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, queryProcessor, this.pullMessageExecutor);</span>
+
+        /**
+         * ClientManageProcessor
+         */
+<span class="fc" id="L400">        ClientManageProcessor clientProcessor = new ClientManageProcessor(this);</span>
+<span class="fc" id="L401">        this.remotingServer.registerProcessor(RequestCode.HEART_BEAT, clientProcessor, this.clientManageExecutor);</span>
+<span class="fc" id="L402">        this.remotingServer.registerProcessor(RequestCode.UNREGISTER_CLIENT, clientProcessor, this.clientManageExecutor);</span>
+
+<span class="fc" id="L404">        this.fastRemotingServer.registerProcessor(RequestCode.HEART_BEAT, clientProcessor, this.clientManageExecutor);</span>
+<span class="fc" id="L405">        this.fastRemotingServer.registerProcessor(RequestCode.UNREGISTER_CLIENT, clientProcessor, this.clientManageExecutor);</span>
+
+        /**
+         * ConsumerManageProcessor
+         */
+<span class="fc" id="L410">        ConsumerManageProcessor consumerManageProcessor = new ConsumerManageProcessor(this);</span>
+<span class="fc" id="L411">        this.remotingServer.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, consumerManageProcessor, this.consumerManageExecutor);</span>
+<span class="fc" id="L412">        this.remotingServer.registerProcessor(RequestCode.UPDATE_CONSUMER_OFFSET, consumerManageProcessor, this.consumerManageExecutor);</span>
+<span class="fc" id="L413">        this.remotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, consumerManageProcessor, this.consumerManageExecutor);</span>
+
+<span class="fc" id="L415">        this.fastRemotingServer.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, consumerManageProcessor, this.consumerManageExecutor);</span>
+<span class="fc" id="L416">        this.fastRemotingServer.registerProcessor(RequestCode.UPDATE_CONSUMER_OFFSET, consumerManageProcessor, this.consumerManageExecutor);</span>
+<span class="fc" id="L417">        this.fastRemotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, consumerManageProcessor, this.consumerManageExecutor);</span>
+
+        /**
+         * EndTransactionProcessor
+         */
+<span class="fc" id="L422">        this.remotingServer.registerProcessor(RequestCode.END_TRANSACTION, new EndTransactionProcessor(this), this.sendMessageExecutor);</span>
+<span class="fc" id="L423">        this.fastRemotingServer.registerProcessor(RequestCode.END_TRANSACTION, new EndTransactionProcessor(this), this.sendMessageExecutor);</span>
+
+        /**
+         * Default
+         */
+<span class="fc" id="L428">        AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);</span>
+<span class="fc" id="L429">        this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);</span>
+<span class="fc" id="L430">        this.fastRemotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);</span>
+<span class="fc" id="L431">    }</span>
+
+    public BrokerStats getBrokerStats() {
+<span class="nc" id="L434">        return brokerStats;</span>
+    }
+
+    public void setBrokerStats(BrokerStats brokerStats) {
+<span class="nc" id="L438">        this.brokerStats = brokerStats;</span>
+<span class="nc" id="L439">    }</span>
+
+    public void protectBroker() {
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        if (this.brokerConfig.isDisableConsumeIfConsumerReadSlowly()) {</span>
+<span class="nc" id="L443">            final Iterator&lt;Map.Entry&lt;String, MomentStatsItem&gt;&gt; it = this.brokerStatsManager.getMomentStatsItemSetFallSize().getStatsItemTable().entrySet().iterator();</span>
+<span class="nc bnc" id="L444" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L445">                final Map.Entry&lt;String, MomentStatsItem&gt; next = it.next();</span>
+<span class="nc" id="L446">                final long fallBehindBytes = next.getValue().getValue().get();</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">                if (fallBehindBytes &gt; this.brokerConfig.getConsumerFallbehindThreshold()) {</span>
+<span class="nc" id="L448">                    final String[] split = next.getValue().getStatsKey().split(&quot;@&quot;);</span>
+<span class="nc" id="L449">                    final String group = split[2];</span>
+<span class="nc" id="L450">                    LOG_PROTECTION.info(&quot;[PROTECT_BROKER] the consumer[{}] consume slowly, {} bytes, disable it&quot;, group, fallBehindBytes);</span>
+<span class="nc" id="L451">                    this.subscriptionGroupManager.disableConsume(group);</span>
+                }
+<span class="nc" id="L453">            }</span>
+        }
+<span class="nc" id="L455">    }</span>
+
+    public long headSlowTimeMills(BlockingQueue&lt;Runnable&gt; q) {
+<span class="nc" id="L458">        long slowTimeMills = 0;</span>
+<span class="nc" id="L459">        final Runnable peek = q.peek();</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">        if (peek != null) {</span>
+<span class="nc" id="L461">            RequestTask rt = BrokerFastFailure.castRunnable(peek);</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">            slowTimeMills = rt == null ? 0 : this.messageStore.now() - rt.getCreateTimestamp();</span>
+        }
+
+<span class="nc bnc" id="L465" title="All 2 branches missed.">        if (slowTimeMills &lt; 0)</span>
+<span class="nc" id="L466">            slowTimeMills = 0;</span>
+
+<span class="nc" id="L468">        return slowTimeMills;</span>
+    }
+
+    public long headSlowTimeMills4SendThreadPoolQueue() {
+<span class="nc" id="L472">        return this.headSlowTimeMills(this.sendThreadPoolQueue);</span>
+    }
+
+    public long headSlowTimeMills4PullThreadPoolQueue() {
+<span class="nc" id="L476">        return this.headSlowTimeMills(this.pullThreadPoolQueue);</span>
+    }
+
+    public void printWaterMark() {
+<span class="nc" id="L480">        LOG_WATER_MARK.info(&quot;[WATERMARK] Send Queue Size: {} SlowTimeMills: {}&quot;, this.sendThreadPoolQueue.size(), headSlowTimeMills4SendThreadPoolQueue());</span>
+<span class="nc" id="L481">        LOG_WATER_MARK.info(&quot;[WATERMARK] Pull Queue Size: {} SlowTimeMills: {}&quot;, this.pullThreadPoolQueue.size(), headSlowTimeMills4PullThreadPoolQueue());</span>
+<span class="nc" id="L482">    }</span>
+
+    public MessageStore getMessageStore() {
+<span class="fc" id="L485">        return messageStore;</span>
+    }
+
+    public void setMessageStore(MessageStore messageStore) {
+<span class="fc" id="L489">        this.messageStore = messageStore;</span>
+<span class="fc" id="L490">    }</span>
+
+    private void printMasterAndSlaveDiff() {
+<span class="nc" id="L493">        long diff = this.messageStore.slaveFallBehindMuch();</span>
+
+        // XXX: warn and notify me
+<span class="nc" id="L496">        log.info(&quot;Slave fall behind master: {} bytes&quot;, diff);</span>
+<span class="nc" id="L497">    }</span>
+
+    public Broker2Client getBroker2Client() {
+<span class="nc" id="L500">        return broker2Client;</span>
+    }
+
+    public ConsumerManager getConsumerManager() {
+<span class="fc" id="L504">        return consumerManager;</span>
+    }
+
+    public ConsumerOffsetManager getConsumerOffsetManager() {
+<span class="nc" id="L508">        return consumerOffsetManager;</span>
+    }
+
+    public MessageStoreConfig getMessageStoreConfig() {
+<span class="fc" id="L512">        return messageStoreConfig;</span>
+    }
+
+    public ProducerManager getProducerManager() {
+<span class="fc" id="L516">        return producerManager;</span>
+    }
+
+    public void setFastRemotingServer(RemotingServer fastRemotingServer) {
+<span class="nc" id="L520">        this.fastRemotingServer = fastRemotingServer;</span>
+<span class="nc" id="L521">    }</span>
+
+    public PullMessageProcessor getPullMessageProcessor() {
+<span class="nc" id="L524">        return pullMessageProcessor;</span>
+    }
+
+    public PullRequestHoldService getPullRequestHoldService() {
+<span class="nc" id="L528">        return pullRequestHoldService;</span>
+    }
+
+    public SubscriptionGroupManager getSubscriptionGroupManager() {
+<span class="fc" id="L532">        return subscriptionGroupManager;</span>
+    }
+
+    public void shutdown() {
+<span class="pc bpc" id="L536" title="1 of 2 branches missed.">        if (this.brokerStatsManager != null) {</span>
+<span class="fc" id="L537">            this.brokerStatsManager.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">        if (this.clientHousekeepingService != null) {</span>
+<span class="fc" id="L541">            this.clientHousekeepingService.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">        if (this.pullRequestHoldService != null) {</span>
+<span class="fc" id="L545">            this.pullRequestHoldService.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">        if (this.remotingServer != null) {</span>
+<span class="fc" id="L549">            this.remotingServer.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L552" title="1 of 2 branches missed.">        if (this.fastRemotingServer != null) {</span>
+<span class="fc" id="L553">            this.fastRemotingServer.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L556" title="1 of 2 branches missed.">        if (this.messageStore != null) {</span>
+<span class="fc" id="L557">            this.messageStore.shutdown();</span>
+        }
+
+<span class="fc" id="L560">        this.scheduledExecutorService.shutdown();</span>
+        try {
+<span class="fc" id="L562">            this.scheduledExecutorService.awaitTermination(5000, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L563">        } catch (InterruptedException e) {</span>
+<span class="fc" id="L564">        }</span>
+
+<span class="fc" id="L566">        this.unregisterBrokerAll();</span>
+
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">        if (this.sendMessageExecutor != null) {</span>
+<span class="fc" id="L569">            this.sendMessageExecutor.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L572" title="1 of 2 branches missed.">        if (this.pullMessageExecutor != null) {</span>
+<span class="fc" id="L573">            this.pullMessageExecutor.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L576" title="1 of 2 branches missed.">        if (this.adminBrokerExecutor != null) {</span>
+<span class="fc" id="L577">            this.adminBrokerExecutor.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">        if (this.brokerOuterAPI != null) {</span>
+<span class="fc" id="L581">            this.brokerOuterAPI.shutdown();</span>
+        }
+
+<span class="fc" id="L584">        this.consumerOffsetManager.persist();</span>
+
+<span class="pc bpc" id="L586" title="1 of 2 branches missed.">        if (this.filterServerManager != null) {</span>
+<span class="fc" id="L587">            this.filterServerManager.shutdown();</span>
+        }
+
+<span class="pc bpc" id="L590" title="1 of 2 branches missed.">        if (this.brokerFastFailure != null) {</span>
+<span class="fc" id="L591">            this.brokerFastFailure.shutdown();</span>
+        }
+<span class="fc" id="L593">    }</span>
+
+    private void unregisterBrokerAll() {
+<span class="fc" id="L596">        this.brokerOuterAPI.unregisterBrokerAll(</span>
+<span class="fc" id="L597">            this.brokerConfig.getBrokerClusterName(),</span>
+<span class="fc" id="L598">            this.getBrokerAddr(),</span>
+<span class="fc" id="L599">            this.brokerConfig.getBrokerName(),</span>
+<span class="fc" id="L600">            this.brokerConfig.getBrokerId());</span>
+<span class="fc" id="L601">    }</span>
+
+    public String getBrokerAddr() {
+<span class="fc" id="L604">        return this.brokerConfig.getBrokerIP1() + &quot;:&quot; + this.nettyServerConfig.getListenPort();</span>
+    }
+
+    public void start() throws Exception {
+<span class="pc bpc" id="L608" title="1 of 2 branches missed.">        if (this.messageStore != null) {</span>
+<span class="fc" id="L609">            this.messageStore.start();</span>
+        }
+
+<span class="pc bpc" id="L612" title="1 of 2 branches missed.">        if (this.remotingServer != null) {</span>
+<span class="fc" id="L613">            this.remotingServer.start();</span>
+        }
+
+<span class="pc bpc" id="L616" title="1 of 2 branches missed.">        if (this.fastRemotingServer != null) {</span>
+<span class="fc" id="L617">            this.fastRemotingServer.start();</span>
+        }
+
+<span class="pc bpc" id="L620" title="1 of 2 branches missed.">        if (this.brokerOuterAPI != null) {</span>
+<span class="fc" id="L621">            this.brokerOuterAPI.start();</span>
+        }
+
+<span class="pc bpc" id="L624" title="1 of 2 branches missed.">        if (this.pullRequestHoldService != null) {</span>
+<span class="fc" id="L625">            this.pullRequestHoldService.start();</span>
+        }
+
+<span class="pc bpc" id="L628" title="1 of 2 branches missed.">        if (this.clientHousekeepingService != null) {</span>
+<span class="fc" id="L629">            this.clientHousekeepingService.start();</span>
+        }
+
+<span class="pc bpc" id="L632" title="1 of 2 branches missed.">        if (this.filterServerManager != null) {</span>
+<span class="fc" id="L633">            this.filterServerManager.start();</span>
+        }
+
+<span class="fc" id="L636">        this.registerBrokerAll(true, false);</span>
+
+<span class="fc" id="L638">        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {</span>
+
+            @Override
+            public void run() {
+                try {
+<span class="nc" id="L643">                    BrokerController.this.registerBrokerAll(true, false);</span>
+<span class="nc" id="L644">                } catch (Throwable e) {</span>
+<span class="nc" id="L645">                    log.error(&quot;registerBrokerAll Exception&quot;, e);</span>
+<span class="nc" id="L646">                }</span>
+<span class="nc" id="L647">            }</span>
+        }, 1000 * 10, 1000 * 30, TimeUnit.MILLISECONDS);
+
+<span class="pc bpc" id="L650" title="1 of 2 branches missed.">        if (this.brokerStatsManager != null) {</span>
+<span class="fc" id="L651">            this.brokerStatsManager.start();</span>
+        }
+
+<span class="pc bpc" id="L654" title="1 of 2 branches missed.">        if (this.brokerFastFailure != null) {</span>
+<span class="fc" id="L655">            this.brokerFastFailure.start();</span>
+        }
+<span class="fc" id="L657">    }</span>
+
+    public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway) {
+<span class="fc" id="L660">        TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();</span>
+
+<span class="pc bpc" id="L662" title="1 of 2 branches missed.">        if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())</span>
+<span class="pc bpc" id="L663" title="1 of 2 branches missed.">            || !PermName.isReadable(this.getBrokerConfig().getBrokerPermission())) {</span>
+<span class="nc" id="L664">            ConcurrentHashMap&lt;String, TopicConfig&gt; topicConfigTable = new ConcurrentHashMap&lt;String, TopicConfig&gt;();</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">            for (TopicConfig topicConfig : topicConfigWrapper.getTopicConfigTable().values()) {</span>
+<span class="nc" id="L666">                TopicConfig tmp =</span>
+<span class="nc" id="L667">                    new TopicConfig(topicConfig.getTopicName(), topicConfig.getReadQueueNums(), topicConfig.getWriteQueueNums(),</span>
+<span class="nc" id="L668">                        this.brokerConfig.getBrokerPermission());</span>
+<span class="nc" id="L669">                topicConfigTable.put(topicConfig.getTopicName(), tmp);</span>
+<span class="nc" id="L670">            }</span>
+<span class="nc" id="L671">            topicConfigWrapper.setTopicConfigTable(topicConfigTable);</span>
+        }
+
+<span class="fc" id="L674">        RegisterBrokerResult registerBrokerResult = this.brokerOuterAPI.registerBrokerAll(</span>
+<span class="fc" id="L675">            this.brokerConfig.getBrokerClusterName(),</span>
+<span class="fc" id="L676">            this.getBrokerAddr(),</span>
+<span class="fc" id="L677">            this.brokerConfig.getBrokerName(),</span>
+<span class="fc" id="L678">            this.brokerConfig.getBrokerId(),</span>
+<span class="fc" id="L679">            this.getHAServerAddr(),</span>
+            topicConfigWrapper,
+<span class="fc" id="L681">            this.filterServerManager.buildNewFilterServerList(),</span>
+            oneway,
+<span class="fc" id="L683">            this.brokerConfig.getRegisterBrokerTimeoutMills());</span>
+
+<span class="pc bpc" id="L685" title="1 of 2 branches missed.">        if (registerBrokerResult != null) {</span>
+<span class="nc bnc" id="L686" title="All 4 branches missed.">            if (this.updateMasterHAServerAddrPeriodically &amp;&amp; registerBrokerResult.getHaServerAddr() != null) {</span>
+<span class="nc" id="L687">                this.messageStore.updateHaMasterAddress(registerBrokerResult.getHaServerAddr());</span>
+            }
+
+<span class="nc" id="L690">            this.slaveSynchronize.setMasterAddr(registerBrokerResult.getMasterAddr());</span>
+
+<span class="nc bnc" id="L692" title="All 2 branches missed.">            if (checkOrderConfig) {</span>
+<span class="nc" id="L693">                this.getTopicConfigManager().updateOrderTopicConfig(registerBrokerResult.getKvTable());</span>
+            }
+        }
+<span class="fc" id="L696">    }</span>
+
+    public TopicConfigManager getTopicConfigManager() {
+<span class="fc" id="L699">        return topicConfigManager;</span>
+    }
+
+    public void setTopicConfigManager(TopicConfigManager topicConfigManager) {
+<span class="nc" id="L703">        this.topicConfigManager = topicConfigManager;</span>
+<span class="nc" id="L704">    }</span>
+
+    public String getHAServerAddr() {
+<span class="fc" id="L707">        return this.brokerConfig.getBrokerIP2() + &quot;:&quot; + this.messageStoreConfig.getHaListenPort();</span>
+    }
+
+    public RebalanceLockManager getRebalanceLockManager() {
+<span class="nc" id="L711">        return rebalanceLockManager;</span>
+    }
+
+    public SlaveSynchronize getSlaveSynchronize() {
+<span class="nc" id="L715">        return slaveSynchronize;</span>
+    }
+
+    public ExecutorService getPullMessageExecutor() {
+<span class="nc" id="L719">        return pullMessageExecutor;</span>
+    }
+
+    public void setPullMessageExecutor(ExecutorService pullMessageExecutor) {
+<span class="nc" id="L723">        this.pullMessageExecutor = pullMessageExecutor;</span>
+<span class="nc" id="L724">    }</span>
+
+    public BlockingQueue&lt;Runnable&gt; getSendThreadPoolQueue() {
+<span class="fc" id="L727">        return sendThreadPoolQueue;</span>
+    }
+
+    public FilterServerManager getFilterServerManager() {
+<span class="nc" id="L731">        return filterServerManager;</span>
+    }
+
+    public BrokerStatsManager getBrokerStatsManager() {
+<span class="fc" id="L735">        return brokerStatsManager;</span>
+    }
+
+    public List&lt;SendMessageHook&gt; getSendMessageHookList() {
+<span class="nc" id="L739">        return sendMessageHookList;</span>
+    }
+
+    public void registerSendMessageHook(final SendMessageHook hook) {
+<span class="nc" id="L743">        this.sendMessageHookList.add(hook);</span>
+<span class="nc" id="L744">        log.info(&quot;register SendMessageHook Hook, {}&quot;, hook.hookName());</span>
+<span class="nc" id="L745">    }</span>
+
+    public List&lt;ConsumeMessageHook&gt; getConsumeMessageHookList() {
+<span class="nc" id="L748">        return consumeMessageHookList;</span>
+    }
+
+    public void registerConsumeMessageHook(final ConsumeMessageHook hook) {
+<span class="nc" id="L752">        this.consumeMessageHookList.add(hook);</span>
+<span class="nc" id="L753">        log.info(&quot;register ConsumeMessageHook Hook, {}&quot;, hook.hookName());</span>
+<span class="nc" id="L754">    }</span>
+
+    public void registerServerRPCHook(RPCHook rpcHook) {
+<span class="nc" id="L757">        getRemotingServer().registerRPCHook(rpcHook);</span>
+<span class="nc" id="L758">    }</span>
+
+    public RemotingServer getRemotingServer() {
+<span class="nc" id="L761">        return remotingServer;</span>
+    }
+
+    public void setRemotingServer(RemotingServer remotingServer) {
+<span class="nc" id="L765">        this.remotingServer = remotingServer;</span>
+<span class="nc" id="L766">    }</span>
+
+    public void registerClientRPCHook(RPCHook rpcHook) {
+<span class="nc" id="L769">        this.getBrokerOuterAPI().registerRPCHook(rpcHook);</span>
+<span class="nc" id="L770">    }</span>
+
+    public BrokerOuterAPI getBrokerOuterAPI() {
+<span class="nc" id="L773">        return brokerOuterAPI;</span>
+    }
+
+    public InetSocketAddress getStoreHost() {
+<span class="nc" id="L777">        return storeHost;</span>
+    }
+
+    public void setStoreHost(InetSocketAddress storeHost) {
+<span class="fc" id="L781">        this.storeHost = storeHost;</span>
+<span class="fc" id="L782">    }</span>
+
+    public Configuration getConfiguration() {
+<span class="nc" id="L785">        return this.configuration;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

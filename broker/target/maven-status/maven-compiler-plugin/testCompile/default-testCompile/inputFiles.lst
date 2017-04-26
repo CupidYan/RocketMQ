@@ -1,0 +1,5 @@
+/home/cupid/Downloads/incubator-rocketmq/broker/src/test/java/org/apache/rocketmq/broker/BrokerControllerTest.java
+/home/cupid/Downloads/incubator-rocketmq/broker/src/test/java/org/apache/rocketmq/broker/client/ProducerManagerTest.java
+/home/cupid/Downloads/incubator-rocketmq/broker/src/test/java/org/apache/rocketmq/broker/processor/SendMessageProcessorTest.java
+/home/cupid/Downloads/incubator-rocketmq/broker/src/test/java/org/apache/rocketmq/broker/processor/PullMessageProcessorTest.java
+/home/cupid/Downloads/incubator-rocketmq/broker/src/test/java/org/apache/rocketmq/broker/processor/ClientManageProcessorTest.java

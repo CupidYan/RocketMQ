@@ -1,0 +1,551 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MappedFile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">MappedFile.java</span></div><h1>MappedFile.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import com.sun.jna.NativeLong;
+import com.sun.jna.Pointer;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.store.config.FlushDiskType;
+import org.apache.rocketmq.store.util.LibC;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import sun.nio.ch.DirectBuffer;
+
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">public class MappedFile extends ReferenceResource {</span>
+    public static final int OS_PAGE_SIZE = 1024 * 4;
+<span class="fc" id="L44">    protected static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+
+<span class="fc" id="L46">    private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);</span>
+
+<span class="fc" id="L48">    private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);</span>
+<span class="pc" id="L49">    protected final AtomicInteger wrotePosition = new AtomicInteger(0);</span>
+    //ADD BY ChenYang
+<span class="pc" id="L51">    protected final AtomicInteger committedPosition = new AtomicInteger(0);</span>
+<span class="pc" id="L52">    private final AtomicInteger flushedPosition = new AtomicInteger(0);</span>
+    protected int fileSize;
+    protected FileChannel fileChannel;
+    /**
+     * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
+     */
+<span class="pc" id="L58">    protected ByteBuffer writeBuffer = null;</span>
+<span class="pc" id="L59">    protected TransientStorePool transientStorePool = null;</span>
+    private String fileName;
+    private long fileFromOffset;
+    private File file;
+    private MappedByteBuffer mappedByteBuffer;
+<span class="pc" id="L64">    private volatile long storeTimestamp = 0;</span>
+<span class="pc" id="L65">    private boolean firstCreateInQueue = false;</span>
+
+<span class="nc" id="L67">    public MappedFile() {</span>
+<span class="nc" id="L68">    }</span>
+
+<span class="fc" id="L70">    public MappedFile(final String fileName, final int fileSize) throws IOException {</span>
+<span class="fc" id="L71">        init(fileName, fileSize);</span>
+<span class="fc" id="L72">    }</span>
+
+<span class="nc" id="L74">    public MappedFile(final String fileName, final int fileSize, final TransientStorePool transientStorePool) throws IOException {</span>
+<span class="nc" id="L75">        init(fileName, fileSize, transientStorePool);</span>
+<span class="nc" id="L76">    }</span>
+
+    public static void ensureDirOK(final String dirName) {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (dirName != null) {</span>
+<span class="fc" id="L80">            File f = new File(dirName);</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            if (!f.exists()) {</span>
+<span class="fc" id="L82">                boolean result = f.mkdirs();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                log.info(dirName + &quot; mkdir &quot; + (result ? &quot;OK&quot; : &quot;Failed&quot;));</span>
+            }
+        }
+<span class="fc" id="L86">    }</span>
+
+    public static void clean(final ByteBuffer buffer) {
+<span class="pc bpc" id="L89" title="3 of 6 branches missed.">        if (buffer == null || !buffer.isDirect() || buffer.capacity() == 0)</span>
+<span class="nc" id="L90">            return;</span>
+<span class="fc" id="L91">        invoke(invoke(viewed(buffer), &quot;cleaner&quot;), &quot;clean&quot;);</span>
+<span class="fc" id="L92">    }</span>
+
+    private static Object invoke(final Object target, final String methodName, final Class&lt;?&gt;... args) {
+<span class="fc" id="L95">        return AccessController.doPrivileged(new PrivilegedAction&lt;Object&gt;() {</span>
+            public Object run() {
+                try {
+<span class="fc" id="L98">                    Method method = method(target, methodName, args);</span>
+<span class="fc" id="L99">                    method.setAccessible(true);</span>
+<span class="fc" id="L100">                    return method.invoke(target);</span>
+<span class="nc" id="L101">                } catch (Exception e) {</span>
+<span class="nc" id="L102">                    throw new IllegalStateException(e);</span>
+                }
+            }
+        });
+    }
+
+    private static Method method(Object target, String methodName, Class&lt;?&gt;[] args)
+        throws NoSuchMethodException {
+        try {
+<span class="fc" id="L111">            return target.getClass().getMethod(methodName, args);</span>
+<span class="nc" id="L112">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L113">            return target.getClass().getDeclaredMethod(methodName, args);</span>
+        }
+    }
+
+    private static ByteBuffer viewed(ByteBuffer buffer) {
+<span class="fc" id="L118">        String methodName = &quot;viewedBuffer&quot;;</span>
+
+<span class="fc" id="L120">        Method[] methods = buffer.getClass().getMethods();</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        for (int i = 0; i &lt; methods.length; i++) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (methods[i].getName().equals(&quot;attachment&quot;)) {</span>
+<span class="fc" id="L123">                methodName = &quot;attachment&quot;;</span>
+<span class="fc" id="L124">                break;</span>
+            }
+        }
+
+<span class="fc" id="L128">        ByteBuffer viewedBuffer = (ByteBuffer) invoke(buffer, methodName);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (viewedBuffer == null)</span>
+<span class="fc" id="L130">            return buffer;</span>
+        else
+<span class="nc" id="L132">            return viewed(viewedBuffer);</span>
+    }
+
+    public static int getTotalMappedFiles() {
+<span class="nc" id="L136">        return TOTAL_MAPPED_FILES.get();</span>
+    }
+
+    public static long getTotalMappedVirtualMemory() {
+<span class="nc" id="L140">        return TOTAL_MAPPED_VIRTUAL_MEMORY.get();</span>
+    }
+
+    public void init(final String fileName, final int fileSize, final TransientStorePool transientStorePool) throws IOException {
+<span class="nc" id="L144">        init(fileName, fileSize);</span>
+<span class="nc" id="L145">        this.writeBuffer = transientStorePool.borrowBuffer();</span>
+<span class="nc" id="L146">        this.transientStorePool = transientStorePool;</span>
+<span class="nc" id="L147">    }</span>
+
+    private void init(final String fileName, final int fileSize) throws IOException {
+<span class="fc" id="L150">        this.fileName = fileName;</span>
+<span class="fc" id="L151">        this.fileSize = fileSize;</span>
+<span class="fc" id="L152">        this.file = new File(fileName);</span>
+<span class="fc" id="L153">        this.fileFromOffset = Long.parseLong(this.file.getName());</span>
+<span class="fc" id="L154">        boolean ok = false;</span>
+
+<span class="fc" id="L156">        ensureDirOK(this.file.getParent());</span>
+
+        try {
+<span class="fc" id="L159">            this.fileChannel = new RandomAccessFile(this.file, &quot;rw&quot;).getChannel();</span>
+<span class="fc" id="L160">            this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);</span>
+<span class="fc" id="L161">            TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);</span>
+<span class="fc" id="L162">            TOTAL_MAPPED_FILES.incrementAndGet();</span>
+<span class="fc" id="L163">            ok = true;</span>
+<span class="nc" id="L164">        } catch (FileNotFoundException e) {</span>
+<span class="nc" id="L165">            log.error(&quot;create file channel &quot; + this.fileName + &quot; Failed. &quot;, e);</span>
+<span class="nc" id="L166">            throw e;</span>
+<span class="nc" id="L167">        } catch (IOException e) {</span>
+<span class="nc" id="L168">            log.error(&quot;map file &quot; + this.fileName + &quot; Failed. &quot;, e);</span>
+<span class="nc" id="L169">            throw e;</span>
+        } finally {
+<span class="pc bpc" id="L171" title="7 of 8 branches missed.">            if (!ok &amp;&amp; this.fileChannel != null) {</span>
+<span class="nc" id="L172">                this.fileChannel.close();</span>
+            }
+        }
+<span class="fc" id="L175">    }</span>
+
+    public long getLastModifiedTimestamp() {
+<span class="nc" id="L178">        return this.file.lastModified();</span>
+    }
+
+    public int getFileSize() {
+<span class="fc" id="L182">        return fileSize;</span>
+    }
+
+    public FileChannel getFileChannel() {
+<span class="fc" id="L186">        return fileChannel;</span>
+    }
+
+    public AppendMessageResult appendMessage(final MessageExtBrokerInner msg, final AppendMessageCallback cb) {
+<span class="pc bpc" id="L190" title="2 of 4 branches missed.">        assert msg != null;</span>
+<span class="pc bpc" id="L191" title="2 of 4 branches missed.">        assert cb != null;</span>
+
+<span class="fc" id="L193">        int currentPos = this.wrotePosition.get();</span>
+
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        if (currentPos &lt; this.fileSize) {</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();</span>
+<span class="fc" id="L197">            byteBuffer.position(currentPos);</span>
+<span class="fc" id="L198">            AppendMessageResult result =</span>
+<span class="fc" id="L199">                cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, msg);</span>
+<span class="fc" id="L200">            this.wrotePosition.addAndGet(result.getWroteBytes());</span>
+<span class="fc" id="L201">            this.storeTimestamp = result.getStoreTimestamp();</span>
+<span class="fc" id="L202">            return result;</span>
+        }
+
+<span class="nc" id="L205">        log.error(&quot;MappedFile.appendMessage return null, wrotePosition: &quot; + currentPos + &quot; fileSize: &quot;</span>
+            + this.fileSize);
+<span class="nc" id="L207">        return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);</span>
+    }
+
+    /**
+
+     */
+    public long getFileFromOffset() {
+<span class="fc" id="L214">        return this.fileFromOffset;</span>
+    }
+
+    /**
+
+     *
+
+     */
+    public boolean appendMessage(final byte[] data) {
+<span class="fc" id="L223">        int currentPos = this.wrotePosition.get();</span>
+
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">        if ((currentPos + data.length) &lt;= this.fileSize) {</span>
+            try {
+<span class="fc" id="L227">                this.fileChannel.position(currentPos);</span>
+<span class="fc" id="L228">                this.fileChannel.write(ByteBuffer.wrap(data));</span>
+<span class="nc" id="L229">            } catch (Throwable e) {</span>
+<span class="nc" id="L230">                log.error(&quot;Error occurred when append message to mappedFile.&quot;, e);</span>
+<span class="fc" id="L231">            }</span>
+<span class="fc" id="L232">            this.wrotePosition.addAndGet(data.length);</span>
+<span class="fc" id="L233">            return true;</span>
+        }
+
+<span class="nc" id="L236">        return false;</span>
+    }
+
+    /**
+     * @param flushLeastPages
+     * @return The current flushed position
+     */
+    public int flush(final int flushLeastPages) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (this.isAbleToFlush(flushLeastPages)) {</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">            if (this.hold()) {</span>
+<span class="fc" id="L246">                int value = getReadPosition();</span>
+
+                try {
+                    //We only append data to fileChannel or mappedByteBuffer, never both.
+<span class="pc bpc" id="L250" title="1 of 4 branches missed.">                    if (writeBuffer != null || this.fileChannel.position() != 0) {</span>
+<span class="fc" id="L251">                        this.fileChannel.force(false);</span>
+                    } else {
+<span class="fc" id="L253">                        this.mappedByteBuffer.force();</span>
+                    }
+<span class="nc" id="L255">                } catch (Throwable e) {</span>
+<span class="nc" id="L256">                    log.error(&quot;Error occurred when force data to disk.&quot;, e);</span>
+<span class="fc" id="L257">                }</span>
+
+<span class="fc" id="L259">                this.flushedPosition.set(value);</span>
+<span class="fc" id="L260">                this.release();</span>
+<span class="fc" id="L261">            } else {</span>
+<span class="nc" id="L262">                log.warn(&quot;in flush, hold failed, flush offset = &quot; + this.flushedPosition.get());</span>
+<span class="nc" id="L263">                this.flushedPosition.set(getReadPosition());</span>
+            }
+        }
+<span class="fc" id="L266">        return this.getFlushedPosition();</span>
+    }
+
+    public int commit(final int commitLeastPages) {
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (writeBuffer == null) {</span>
+            //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
+<span class="nc" id="L272">            return this.wrotePosition.get();</span>
+        }
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (this.isAbleToCommit(commitLeastPages)) {</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (this.hold()) {</span>
+<span class="nc" id="L276">                commit0(commitLeastPages);</span>
+<span class="nc" id="L277">                this.release();</span>
+            } else {
+<span class="nc" id="L279">                log.warn(&quot;in commit, hold failed, commit offset = &quot; + this.committedPosition.get());</span>
+            }
+        }
+
+        // All dirty data has been committed to FileChannel.
+<span class="nc bnc" id="L284" title="All 6 branches missed.">        if (writeBuffer != null &amp;&amp; this.transientStorePool != null &amp;&amp; this.fileSize == this.committedPosition.get()) {</span>
+<span class="nc" id="L285">            this.transientStorePool.returnBuffer(writeBuffer);</span>
+<span class="nc" id="L286">            this.writeBuffer = null;</span>
+        }
+
+<span class="nc" id="L289">        return this.committedPosition.get();</span>
+    }
+
+    protected void commit0(final int commitLeastPages) {
+<span class="nc" id="L293">        int writePos = this.wrotePosition.get();</span>
+<span class="nc" id="L294">        int lastCommittedPosition = this.committedPosition.get();</span>
+
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (writePos - this.committedPosition.get() &gt; 0) {</span>
+            try {
+<span class="nc" id="L298">                ByteBuffer byteBuffer = writeBuffer.slice();</span>
+<span class="nc" id="L299">                byteBuffer.position(lastCommittedPosition);</span>
+<span class="nc" id="L300">                byteBuffer.limit(writePos);</span>
+<span class="nc" id="L301">                this.fileChannel.position(lastCommittedPosition);</span>
+<span class="nc" id="L302">                this.fileChannel.write(byteBuffer);</span>
+<span class="nc" id="L303">                this.committedPosition.set(writePos);</span>
+<span class="nc" id="L304">            } catch (Throwable e) {</span>
+<span class="nc" id="L305">                log.error(&quot;Error occurred when commit data to FileChannel.&quot;, e);</span>
+<span class="nc" id="L306">            }</span>
+        }
+<span class="nc" id="L308">    }</span>
+
+    private boolean isAbleToFlush(final int flushLeastPages) {
+<span class="fc" id="L311">        int flush = this.flushedPosition.get();</span>
+<span class="fc" id="L312">        int write = getReadPosition();</span>
+
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (this.isFull()) {</span>
+<span class="fc" id="L315">            return true;</span>
+        }
+
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        if (flushLeastPages &gt; 0) {</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">            return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) &gt;= flushLeastPages;</span>
+        }
+
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        return write &gt; flush;</span>
+    }
+
+    protected boolean isAbleToCommit(final int commitLeastPages) {
+<span class="nc" id="L326">        int flush = this.committedPosition.get();</span>
+<span class="nc" id="L327">        int write = this.wrotePosition.get();</span>
+
+<span class="nc bnc" id="L329" title="All 2 branches missed.">        if (this.isFull()) {</span>
+<span class="nc" id="L330">            return true;</span>
+        }
+
+<span class="nc bnc" id="L333" title="All 2 branches missed.">        if (commitLeastPages &gt; 0) {</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">            return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) &gt;= commitLeastPages;</span>
+        }
+
+<span class="nc bnc" id="L337" title="All 2 branches missed.">        return write &gt; flush;</span>
+    }
+
+    public int getFlushedPosition() {
+<span class="fc" id="L341">        return flushedPosition.get();</span>
+    }
+
+    public void setFlushedPosition(int pos) {
+<span class="nc" id="L345">        this.flushedPosition.set(pos);</span>
+<span class="nc" id="L346">    }</span>
+
+    public boolean isFull() {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        return this.fileSize == this.wrotePosition.get();</span>
+    }
+
+    public SelectMappedBufferResult selectMappedBuffer(int pos, int size) {
+<span class="nc" id="L353">        int readPosition = getReadPosition();</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        if ((pos + size) &lt;= readPosition) {</span>
+
+<span class="nc bnc" id="L356" title="All 2 branches missed.">            if (this.hold()) {</span>
+<span class="nc" id="L357">                ByteBuffer byteBuffer = this.mappedByteBuffer.slice();</span>
+<span class="nc" id="L358">                byteBuffer.position(pos);</span>
+<span class="nc" id="L359">                ByteBuffer byteBufferNew = byteBuffer.slice();</span>
+<span class="nc" id="L360">                byteBufferNew.limit(size);</span>
+<span class="nc" id="L361">                return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);</span>
+            } else {
+<span class="nc" id="L363">                log.warn(&quot;matched, but hold failed, request pos: &quot; + pos + &quot;, fileFromOffset: &quot;</span>
+                    + this.fileFromOffset);
+            }
+        } else {
+<span class="nc" id="L367">            log.warn(&quot;selectMappedBuffer request pos invalid, request pos: &quot; + pos + &quot;, size: &quot; + size</span>
+                + &quot;, fileFromOffset: &quot; + this.fileFromOffset);
+        }
+
+<span class="nc" id="L371">        return null;</span>
+    }
+
+    /**
+
+     */
+    public SelectMappedBufferResult selectMappedBuffer(int pos) {
+<span class="fc" id="L378">        int readPosition = getReadPosition();</span>
+<span class="pc bpc" id="L379" title="2 of 4 branches missed.">        if (pos &lt; readPosition &amp;&amp; pos &gt;= 0) {</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">            if (this.hold()) {</span>
+<span class="fc" id="L381">                ByteBuffer byteBuffer = this.mappedByteBuffer.slice();</span>
+<span class="fc" id="L382">                byteBuffer.position(pos);</span>
+<span class="fc" id="L383">                int size = readPosition - pos;</span>
+<span class="fc" id="L384">                ByteBuffer byteBufferNew = byteBuffer.slice();</span>
+<span class="fc" id="L385">                byteBufferNew.limit(size);</span>
+<span class="fc" id="L386">                return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);</span>
+            }
+        }
+
+<span class="fc" id="L390">        return null;</span>
+    }
+
+    @Override
+    public boolean cleanup(final long currentRef) {
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">        if (this.isAvailable()) {</span>
+<span class="nc" id="L396">            log.error(&quot;this file[REF:&quot; + currentRef + &quot;] &quot; + this.fileName</span>
+                + &quot; have not shutdown, stop unmaping.&quot;);
+<span class="nc" id="L398">            return false;</span>
+        }
+
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        if (this.isCleanupOver()) {</span>
+<span class="nc" id="L402">            log.error(&quot;this file[REF:&quot; + currentRef + &quot;] &quot; + this.fileName</span>
+                + &quot; have cleanup, do not do it again.&quot;);
+<span class="nc" id="L404">            return true;</span>
+        }
+
+<span class="fc" id="L407">        clean(this.mappedByteBuffer);</span>
+<span class="fc" id="L408">        TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(this.fileSize * (-1));</span>
+<span class="fc" id="L409">        TOTAL_MAPPED_FILES.decrementAndGet();</span>
+<span class="fc" id="L410">        log.info(&quot;unmap file[REF:&quot; + currentRef + &quot;] &quot; + this.fileName + &quot; OK&quot;);</span>
+<span class="fc" id="L411">        return true;</span>
+    }
+
+    public boolean destroy(final long intervalForcibly) {
+<span class="fc" id="L415">        this.shutdown(intervalForcibly);</span>
+
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        if (this.isCleanupOver()) {</span>
+            try {
+<span class="fc" id="L419">                this.fileChannel.close();</span>
+<span class="fc" id="L420">                log.info(&quot;close file channel &quot; + this.fileName + &quot; OK&quot;);</span>
+
+<span class="fc" id="L422">                long beginTime = System.currentTimeMillis();</span>
+<span class="fc" id="L423">                boolean result = this.file.delete();</span>
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">                log.info(&quot;delete file[REF:&quot; + this.getRefCount() + &quot;] &quot; + this.fileName</span>
+<span class="fc" id="L425">                    + (result ? &quot; OK, &quot; : &quot; Failed, &quot;) + &quot;W:&quot; + this.getWrotePosition() + &quot; M:&quot;</span>
+<span class="fc" id="L426">                    + this.getFlushedPosition() + &quot;, &quot;</span>
+<span class="fc" id="L427">                    + UtilAll.computeEclipseTimeMilliseconds(beginTime));</span>
+<span class="nc" id="L428">            } catch (Exception e) {</span>
+<span class="nc" id="L429">                log.warn(&quot;close file channel &quot; + this.fileName + &quot; Failed. &quot;, e);</span>
+<span class="fc" id="L430">            }</span>
+
+<span class="fc" id="L432">            return true;</span>
+        } else {
+<span class="fc" id="L434">            log.warn(&quot;destroy mapped file[REF:&quot; + this.getRefCount() + &quot;] &quot; + this.fileName</span>
+                + &quot; Failed. cleanupOver: &quot; + this.cleanupOver);
+        }
+
+<span class="fc" id="L438">        return false;</span>
+    }
+
+    public int getWrotePosition() {
+<span class="fc" id="L442">        return wrotePosition.get();</span>
+    }
+
+    public void setWrotePosition(int pos) {
+<span class="nc" id="L446">        this.wrotePosition.set(pos);</span>
+<span class="nc" id="L447">    }</span>
+
+    /**
+     * @return The max position which have valid data
+     */
+    public int getReadPosition() {
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">        return this.writeBuffer == null ? this.wrotePosition.get() : this.committedPosition.get();</span>
+    }
+
+    public void setCommittedPosition(int pos) {
+<span class="nc" id="L457">        this.committedPosition.set(pos);</span>
+<span class="nc" id="L458">    }</span>
+
+    public void warmMappedFile(FlushDiskType type, int pages) {
+<span class="nc" id="L461">        long beginTime = System.currentTimeMillis();</span>
+<span class="nc" id="L462">        ByteBuffer byteBuffer = this.mappedByteBuffer.slice();</span>
+<span class="nc" id="L463">        int flush = 0;</span>
+<span class="nc" id="L464">        long time = System.currentTimeMillis();</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">        for (int i = 0, j = 0; i &lt; this.fileSize; i += MappedFile.OS_PAGE_SIZE, j++) {</span>
+<span class="nc" id="L466">            byteBuffer.put(i, (byte) 0);</span>
+            // force flush when flush disk type is sync
+<span class="nc bnc" id="L468" title="All 2 branches missed.">            if (type == FlushDiskType.SYNC_FLUSH) {</span>
+<span class="nc bnc" id="L469" title="All 2 branches missed.">                if ((i / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE) &gt;= pages) {</span>
+<span class="nc" id="L470">                    flush = i;</span>
+<span class="nc" id="L471">                    mappedByteBuffer.force();</span>
+                }
+            }
+
+            // prevent gc
+<span class="nc bnc" id="L476" title="All 2 branches missed.">            if (j % 1000 == 0) {</span>
+<span class="nc" id="L477">                log.info(&quot;j={}, costTime={}&quot;, j, System.currentTimeMillis() - time);</span>
+<span class="nc" id="L478">                time = System.currentTimeMillis();</span>
+                try {
+<span class="nc" id="L480">                    Thread.sleep(0);</span>
+<span class="nc" id="L481">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L482">                    e.printStackTrace();</span>
+<span class="nc" id="L483">                }</span>
+            }
+        }
+
+        // force flush when prepare load finished
+<span class="nc bnc" id="L488" title="All 2 branches missed.">        if (type == FlushDiskType.SYNC_FLUSH) {</span>
+<span class="nc" id="L489">            log.info(&quot;mapped file warm-up done, force to disk, mappedFile={}, costTime={}&quot;,</span>
+<span class="nc" id="L490">                this.getFileName(), System.currentTimeMillis() - beginTime);</span>
+<span class="nc" id="L491">            mappedByteBuffer.force();</span>
+        }
+<span class="nc" id="L493">        log.info(&quot;mapped file warm-up done. mappedFile={}, costTime={}&quot;, this.getFileName(),</span>
+<span class="nc" id="L494">            System.currentTimeMillis() - beginTime);</span>
+
+<span class="nc" id="L496">        this.mlock();</span>
+<span class="nc" id="L497">    }</span>
+
+    public String getFileName() {
+<span class="fc" id="L500">        return fileName;</span>
+    }
+
+    public MappedByteBuffer getMappedByteBuffer() {
+<span class="fc" id="L504">        return mappedByteBuffer;</span>
+    }
+
+    public ByteBuffer sliceByteBuffer() {
+<span class="nc" id="L508">        return this.mappedByteBuffer.slice();</span>
+    }
+
+    public long getStoreTimestamp() {
+<span class="fc" id="L512">        return storeTimestamp;</span>
+    }
+
+    public boolean isFirstCreateInQueue() {
+<span class="nc" id="L516">        return firstCreateInQueue;</span>
+    }
+
+    public void setFirstCreateInQueue(boolean firstCreateInQueue) {
+<span class="fc" id="L520">        this.firstCreateInQueue = firstCreateInQueue;</span>
+<span class="fc" id="L521">    }</span>
+
+    public void mlock() {
+<span class="nc" id="L524">        final long beginTime = System.currentTimeMillis();</span>
+<span class="nc" id="L525">        final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();</span>
+<span class="nc" id="L526">        Pointer pointer = new Pointer(address);</span>
+        {
+<span class="nc" id="L528">            int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));</span>
+<span class="nc" id="L529">            log.info(&quot;mlock {} {} {} ret = {} time consuming = {}&quot;, address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);</span>
+        }
+
+        {
+<span class="nc" id="L533">            int ret = LibC.INSTANCE.madvise(pointer, new NativeLong(this.fileSize), LibC.MADV_WILLNEED);</span>
+<span class="nc" id="L534">            log.info(&quot;madvise {} {} {} ret = {} time consuming = {}&quot;, address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);</span>
+        }
+<span class="nc" id="L536">    }</span>
+
+    public void munlock() {
+<span class="nc" id="L539">        final long beginTime = System.currentTimeMillis();</span>
+<span class="nc" id="L540">        final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();</span>
+<span class="nc" id="L541">        Pointer pointer = new Pointer(address);</span>
+<span class="nc" id="L542">        int ret = LibC.INSTANCE.munlock(pointer, new NativeLong(this.fileSize));</span>
+<span class="nc" id="L543">        log.info(&quot;munlock {} {} {} ret = {} time consuming = {}&quot;, address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);</span>
+<span class="nc" id="L544">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L548">        return this.fileName;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

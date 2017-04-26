@@ -1,0 +1,11 @@
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/ValidatorsTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/consumer/DefaultMQPullConsumerTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/latency/LatencyFaultToleranceImplTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/common/ThreadLocalIndexTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/producer/DefaultMQProducerTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/consumer/DefaultMQPushConsumerTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/consumer/store/LocalFileOffsetStoreTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/consumer/store/RemoteBrokerOffsetStoreTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/impl/MQClientAPIImplTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/producer/selector/SelectMessageQueueByHashTest.java
+/home/cupid/Downloads/incubator-rocketmq/client/src/test/java/org/apache/rocketmq/client/impl/factory/MQClientInstanceTest.java

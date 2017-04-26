@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SendMessageRequestHeaderV2.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.protocol.header</a> &gt; <span class="el_source">SendMessageRequestHeaderV2.java</span></div><h1>SendMessageRequestHeaderV2.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.common.protocol.header;
+
+import org.apache.rocketmq.remoting.CommandCustomHeader;
+import org.apache.rocketmq.remoting.annotation.CFNotNull;
+import org.apache.rocketmq.remoting.annotation.CFNullable;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+
+/**
+ * Use short variable name to speed up FastJson deserialization process.
+ */
+<span class="nc" id="L28">public class SendMessageRequestHeaderV2 implements CommandCustomHeader {</span>
+    @CFNotNull
+    private String a; // producerGroup;
+    @CFNotNull
+    private String b; // topic;
+    @CFNotNull
+    private String c; // defaultTopic;
+    @CFNotNull
+    private Integer d; // defaultTopicQueueNums;
+    @CFNotNull
+    private Integer e; // queueId;
+    @CFNotNull
+    private Integer f; // sysFlag;
+    @CFNotNull
+    private Long g; // bornTimestamp;
+    @CFNotNull
+    private Integer h; // flag;
+    @CFNullable
+    private String i; // properties;
+    @CFNullable
+    private Integer j; // reconsumeTimes;
+    @CFNullable
+    private boolean k; // unitMode = false;
+
+    private Integer l; // consumeRetryTimes
+
+    public static SendMessageRequestHeader createSendMessageRequestHeaderV1(final SendMessageRequestHeaderV2 v2) {
+<span class="nc" id="L55">        SendMessageRequestHeader v1 = new SendMessageRequestHeader();</span>
+<span class="nc" id="L56">        v1.setProducerGroup(v2.a);</span>
+<span class="nc" id="L57">        v1.setTopic(v2.b);</span>
+<span class="nc" id="L58">        v1.setDefaultTopic(v2.c);</span>
+<span class="nc" id="L59">        v1.setDefaultTopicQueueNums(v2.d);</span>
+<span class="nc" id="L60">        v1.setQueueId(v2.e);</span>
+<span class="nc" id="L61">        v1.setSysFlag(v2.f);</span>
+<span class="nc" id="L62">        v1.setBornTimestamp(v2.g);</span>
+<span class="nc" id="L63">        v1.setFlag(v2.h);</span>
+<span class="nc" id="L64">        v1.setProperties(v2.i);</span>
+<span class="nc" id="L65">        v1.setReconsumeTimes(v2.j);</span>
+<span class="nc" id="L66">        v1.setUnitMode(v2.k);</span>
+<span class="nc" id="L67">        v1.setMaxReconsumeTimes(v2.l);</span>
+<span class="nc" id="L68">        return v1;</span>
+    }
+
+    public static SendMessageRequestHeaderV2 createSendMessageRequestHeaderV2(final SendMessageRequestHeader v1) {
+<span class="nc" id="L72">        SendMessageRequestHeaderV2 v2 = new SendMessageRequestHeaderV2();</span>
+<span class="nc" id="L73">        v2.a = v1.getProducerGroup();</span>
+<span class="nc" id="L74">        v2.b = v1.getTopic();</span>
+<span class="nc" id="L75">        v2.c = v1.getDefaultTopic();</span>
+<span class="nc" id="L76">        v2.d = v1.getDefaultTopicQueueNums();</span>
+<span class="nc" id="L77">        v2.e = v1.getQueueId();</span>
+<span class="nc" id="L78">        v2.f = v1.getSysFlag();</span>
+<span class="nc" id="L79">        v2.g = v1.getBornTimestamp();</span>
+<span class="nc" id="L80">        v2.h = v1.getFlag();</span>
+<span class="nc" id="L81">        v2.i = v1.getProperties();</span>
+<span class="nc" id="L82">        v2.j = v1.getReconsumeTimes();</span>
+<span class="nc" id="L83">        v2.k = v1.isUnitMode();</span>
+<span class="nc" id="L84">        v2.l = v1.getMaxReconsumeTimes();</span>
+<span class="nc" id="L85">        return v2;</span>
+    }
+
+    @Override
+    public void checkFields() throws RemotingCommandException {
+<span class="nc" id="L90">    }</span>
+
+    public String getA() {
+<span class="nc" id="L93">        return a;</span>
+    }
+
+    public void setA(String a) {
+<span class="nc" id="L97">        this.a = a;</span>
+<span class="nc" id="L98">    }</span>
+
+    public String getB() {
+<span class="nc" id="L101">        return b;</span>
+    }
+
+    public void setB(String b) {
+<span class="nc" id="L105">        this.b = b;</span>
+<span class="nc" id="L106">    }</span>
+
+    public String getC() {
+<span class="nc" id="L109">        return c;</span>
+    }
+
+    public void setC(String c) {
+<span class="nc" id="L113">        this.c = c;</span>
+<span class="nc" id="L114">    }</span>
+
+    public Integer getD() {
+<span class="nc" id="L117">        return d;</span>
+    }
+
+    public void setD(Integer d) {
+<span class="nc" id="L121">        this.d = d;</span>
+<span class="nc" id="L122">    }</span>
+
+    public Integer getE() {
+<span class="nc" id="L125">        return e;</span>
+    }
+
+    public void setE(Integer e) {
+<span class="nc" id="L129">        this.e = e;</span>
+<span class="nc" id="L130">    }</span>
+
+    public Integer getF() {
+<span class="nc" id="L133">        return f;</span>
+    }
+
+    public void setF(Integer f) {
+<span class="nc" id="L137">        this.f = f;</span>
+<span class="nc" id="L138">    }</span>
+
+    public Long getG() {
+<span class="nc" id="L141">        return g;</span>
+    }
+
+    public void setG(Long g) {
+<span class="nc" id="L145">        this.g = g;</span>
+<span class="nc" id="L146">    }</span>
+
+    public Integer getH() {
+<span class="nc" id="L149">        return h;</span>
+    }
+
+    public void setH(Integer h) {
+<span class="nc" id="L153">        this.h = h;</span>
+<span class="nc" id="L154">    }</span>
+
+    public String getI() {
+<span class="nc" id="L157">        return i;</span>
+    }
+
+    public void setI(String i) {
+<span class="nc" id="L161">        this.i = i;</span>
+<span class="nc" id="L162">    }</span>
+
+    public Integer getJ() {
+<span class="nc" id="L165">        return j;</span>
+    }
+
+    public void setJ(Integer j) {
+<span class="nc" id="L169">        this.j = j;</span>
+<span class="nc" id="L170">    }</span>
+
+    public boolean isK() {
+<span class="nc" id="L173">        return k;</span>
+    }
+
+    public void setK(boolean k) {
+<span class="nc" id="L177">        this.k = k;</span>
+<span class="nc" id="L178">    }</span>
+
+    public Integer getL() {
+<span class="nc" id="L181">        return l;</span>
+    }
+
+    public void setL(final Integer l) {
+<span class="nc" id="L185">        this.l = l;</span>
+<span class="nc" id="L186">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JDBCTransactionStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-broker 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.broker.transaction.jdbc</a> &gt; <span class="el_source">JDBCTransactionStore.java</span></div><h1>JDBCTransactionStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.broker.transaction.jdbc;
+
+import java.net.URL;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicLong;
+import org.apache.rocketmq.broker.transaction.TransactionRecord;
+import org.apache.rocketmq.broker.transaction.TransactionStore;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class JDBCTransactionStore implements TransactionStore {
+<span class="nc" id="L38">    private static final Logger log = LoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);</span>
+    private final JDBCTransactionStoreConfig jdbcTransactionStoreConfig;
+    private Connection connection;
+<span class="nc" id="L41">    private AtomicLong totalRecordsValue = new AtomicLong(0);</span>
+
+<span class="nc" id="L43">    public JDBCTransactionStore(JDBCTransactionStoreConfig jdbcTransactionStoreConfig) {</span>
+<span class="nc" id="L44">        this.jdbcTransactionStoreConfig = jdbcTransactionStoreConfig;</span>
+<span class="nc" id="L45">    }</span>
+
+    @Override
+    public boolean open() {
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        if (this.loadDriver()) {</span>
+<span class="nc" id="L50">            Properties props = new Properties();</span>
+<span class="nc" id="L51">            props.put(&quot;user&quot;, jdbcTransactionStoreConfig.getJdbcUser());</span>
+<span class="nc" id="L52">            props.put(&quot;password&quot;, jdbcTransactionStoreConfig.getJdbcPassword());</span>
+
+            try {
+<span class="nc" id="L55">                this.connection =</span>
+<span class="nc" id="L56">                    DriverManager.getConnection(this.jdbcTransactionStoreConfig.getJdbcURL(), props);</span>
+
+<span class="nc" id="L58">                this.connection.setAutoCommit(false);</span>
+
+<span class="nc bnc" id="L60" title="All 2 branches missed.">                if (!this.computeTotalRecords()) {</span>
+<span class="nc" id="L61">                    return this.createDB();</span>
+                }
+
+<span class="nc" id="L64">                return true;</span>
+<span class="nc" id="L65">            } catch (SQLException e) {</span>
+<span class="nc" id="L66">                log.info(&quot;Create JDBC Connection Exeption&quot;, e);</span>
+            }
+        }
+
+<span class="nc" id="L70">        return false;</span>
+    }
+
+    private boolean loadDriver() {
+        try {
+<span class="nc" id="L75">            Class.forName(this.jdbcTransactionStoreConfig.getJdbcDriverClass()).newInstance();</span>
+<span class="nc" id="L76">            log.info(&quot;Loaded the appropriate driver, {}&quot;,</span>
+<span class="nc" id="L77">                this.jdbcTransactionStoreConfig.getJdbcDriverClass());</span>
+<span class="nc" id="L78">            return true;</span>
+<span class="nc" id="L79">        } catch (Exception e) {</span>
+<span class="nc" id="L80">            log.info(&quot;Loaded the appropriate driver Exception&quot;, e);</span>
+        }
+
+<span class="nc" id="L83">        return false;</span>
+    }
+
+    private boolean computeTotalRecords() {
+<span class="nc" id="L87">        Statement statement = null;</span>
+<span class="nc" id="L88">        ResultSet resultSet = null;</span>
+        try {
+<span class="nc" id="L90">            statement = this.connection.createStatement();</span>
+
+<span class="nc" id="L92">            resultSet = statement.executeQuery(&quot;select count(offset) as total from t_transaction&quot;);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (!resultSet.next()) {</span>
+<span class="nc" id="L94">                log.warn(&quot;computeTotalRecords ResultSet is empty&quot;);</span>
+<span class="nc" id="L95">                return false;</span>
+            }
+
+<span class="nc" id="L98">            this.totalRecordsValue.set(resultSet.getLong(1));</span>
+<span class="nc" id="L99">        } catch (Exception e) {</span>
+<span class="nc" id="L100">            log.warn(&quot;computeTotalRecords Exception&quot;, e);</span>
+<span class="nc" id="L101">            return false;</span>
+        } finally {
+<span class="nc bnc" id="L103" title="All 8 branches missed.">            if (null != statement) {</span>
+                try {
+<span class="nc" id="L105">                    statement.close();</span>
+<span class="nc" id="L106">                } catch (SQLException e) {</span>
+<span class="nc" id="L107">                }</span>
+            }
+
+<span class="nc bnc" id="L110" title="All 8 branches missed.">            if (null != resultSet) {</span>
+                try {
+<span class="nc" id="L112">                    resultSet.close();</span>
+<span class="nc" id="L113">                } catch (SQLException e) {</span>
+<span class="nc" id="L114">                }</span>
+            }
+        }
+
+<span class="nc" id="L118">        return true;</span>
+    }
+
+    private boolean createDB() {
+<span class="nc" id="L122">        Statement statement = null;</span>
+        try {
+<span class="nc" id="L124">            statement = this.connection.createStatement();</span>
+
+<span class="nc" id="L126">            String sql = this.createTableSql();</span>
+<span class="nc" id="L127">            log.info(&quot;createDB SQL:\n {}&quot;, sql);</span>
+<span class="nc" id="L128">            statement.execute(sql);</span>
+<span class="nc" id="L129">            this.connection.commit();</span>
+<span class="nc" id="L130">            return true;</span>
+<span class="nc" id="L131">        } catch (Exception e) {</span>
+<span class="nc" id="L132">            log.warn(&quot;createDB Exception&quot;, e);</span>
+<span class="nc" id="L133">            return false;</span>
+        } finally {
+<span class="nc bnc" id="L135" title="All 6 branches missed.">            if (null != statement) {</span>
+                try {
+<span class="nc" id="L137">                    statement.close();</span>
+<span class="nc" id="L138">                } catch (SQLException e) {</span>
+<span class="nc" id="L139">                    log.warn(&quot;Close statement exception&quot;, e);</span>
+<span class="nc" id="L140">                }</span>
+            }
+        }
+    }
+
+    private String createTableSql() {
+<span class="nc" id="L146">        URL resource = JDBCTransactionStore.class.getClassLoader().getResource(&quot;transaction.sql&quot;);</span>
+<span class="nc" id="L147">        String fileContent = MixAll.file2String(resource);</span>
+<span class="nc" id="L148">        return fileContent;</span>
+    }
+
+    @Override
+    public void close() {
+        try {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            if (this.connection != null) {</span>
+<span class="nc" id="L155">                this.connection.close();</span>
+            }
+<span class="nc" id="L157">        } catch (SQLException e) {</span>
+<span class="nc" id="L158">        }</span>
+<span class="nc" id="L159">    }</span>
+
+    @Override
+    public boolean put(List&lt;TransactionRecord&gt; trs) {
+<span class="nc" id="L163">        PreparedStatement statement = null;</span>
+        try {
+<span class="nc" id="L165">            this.connection.setAutoCommit(false);</span>
+<span class="nc" id="L166">            statement = this.connection.prepareStatement(&quot;insert into t_transaction values (?, ?)&quot;);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            for (TransactionRecord tr : trs) {</span>
+<span class="nc" id="L168">                statement.setLong(1, tr.getOffset());</span>
+<span class="nc" id="L169">                statement.setString(2, tr.getProducerGroup());</span>
+<span class="nc" id="L170">                statement.addBatch();</span>
+<span class="nc" id="L171">            }</span>
+<span class="nc" id="L172">            int[] executeBatch = statement.executeBatch();</span>
+<span class="nc" id="L173">            this.connection.commit();</span>
+<span class="nc" id="L174">            this.totalRecordsValue.addAndGet(updatedRows(executeBatch));</span>
+<span class="nc" id="L175">            return true;</span>
+<span class="nc" id="L176">        } catch (Exception e) {</span>
+<span class="nc" id="L177">            log.warn(&quot;createDB Exception&quot;, e);</span>
+<span class="nc" id="L178">            return false;</span>
+        } finally {
+<span class="nc bnc" id="L180" title="All 6 branches missed.">            if (null != statement) {</span>
+                try {
+<span class="nc" id="L182">                    statement.close();</span>
+<span class="nc" id="L183">                } catch (SQLException e) {</span>
+<span class="nc" id="L184">                    log.warn(&quot;Close statement exception&quot;, e);</span>
+<span class="nc" id="L185">                }</span>
+            }
+        }
+    }
+
+    private long updatedRows(int[] rows) {
+<span class="nc" id="L191">        long res = 0;</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        for (int i : rows) {</span>
+<span class="nc" id="L193">            res += i;</span>
+        }
+
+<span class="nc" id="L196">        return res;</span>
+    }
+
+    @Override
+    public void remove(List&lt;Long&gt; pks) {
+<span class="nc" id="L201">        PreparedStatement statement = null;</span>
+        try {
+<span class="nc" id="L203">            this.connection.setAutoCommit(false);</span>
+<span class="nc" id="L204">            statement = this.connection.prepareStatement(&quot;DELETE FROM t_transaction WHERE offset = ?&quot;);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">            for (long pk : pks) {</span>
+<span class="nc" id="L206">                statement.setLong(1, pk);</span>
+<span class="nc" id="L207">                statement.addBatch();</span>
+<span class="nc" id="L208">            }</span>
+<span class="nc" id="L209">            int[] executeBatch = statement.executeBatch();</span>
+<span class="nc" id="L210">            this.connection.commit();</span>
+<span class="nc" id="L211">        } catch (Exception e) {</span>
+<span class="nc" id="L212">            log.warn(&quot;createDB Exception&quot;, e);</span>
+        } finally {
+<span class="nc bnc" id="L214" title="All 6 branches missed.">            if (null != statement) {</span>
+                try {
+<span class="nc" id="L216">                    statement.close();</span>
+<span class="nc" id="L217">                } catch (SQLException e) {</span>
+<span class="nc" id="L218">                }</span>
+            }
+        }
+<span class="nc" id="L221">    }</span>
+
+    @Override
+    public List&lt;TransactionRecord&gt; traverse(long pk, int nums) {
+<span class="nc" id="L225">        return null;</span>
+    }
+
+    @Override
+    public long totalRecords() {
+<span class="nc" id="L230">        return this.totalRecordsValue.get();</span>
+    }
+
+    @Override
+    public long minPK() {
+<span class="nc" id="L235">        return 0;</span>
+    }
+
+    @Override
+    public long maxPK() {
+<span class="nc" id="L240">        return 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StoreCheckpoint.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store</a> &gt; <span class="el_source">StoreCheckpoint.java</span></div><h1>StoreCheckpoint.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class StoreCheckpoint {
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+    private final RandomAccessFile randomAccessFile;
+    private final FileChannel fileChannel;
+    private final MappedByteBuffer mappedByteBuffer;
+<span class="fc" id="L35">    private volatile long physicMsgTimestamp = 0;</span>
+<span class="fc" id="L36">    private volatile long logicsMsgTimestamp = 0;</span>
+<span class="fc" id="L37">    private volatile long indexMsgTimestamp = 0;</span>
+
+<span class="fc" id="L39">    public StoreCheckpoint(final String scpPath) throws IOException {</span>
+<span class="fc" id="L40">        File file = new File(scpPath);</span>
+<span class="fc" id="L41">        MappedFile.ensureDirOK(file.getParent());</span>
+<span class="fc" id="L42">        boolean fileExists = file.exists();</span>
+
+<span class="fc" id="L44">        this.randomAccessFile = new RandomAccessFile(file, &quot;rw&quot;);</span>
+<span class="fc" id="L45">        this.fileChannel = this.randomAccessFile.getChannel();</span>
+<span class="fc" id="L46">        this.mappedByteBuffer = fileChannel.map(MapMode.READ_WRITE, 0, MappedFile.OS_PAGE_SIZE);</span>
+
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (fileExists) {</span>
+<span class="fc" id="L49">            log.info(&quot;store checkpoint file exists, &quot; + scpPath);</span>
+<span class="fc" id="L50">            this.physicMsgTimestamp = this.mappedByteBuffer.getLong(0);</span>
+<span class="fc" id="L51">            this.logicsMsgTimestamp = this.mappedByteBuffer.getLong(8);</span>
+<span class="fc" id="L52">            this.indexMsgTimestamp = this.mappedByteBuffer.getLong(16);</span>
+
+<span class="fc" id="L54">            log.info(&quot;store checkpoint file physicMsgTimestamp &quot; + this.physicMsgTimestamp + &quot;, &quot;</span>
+<span class="fc" id="L55">                + UtilAll.timeMillisToHumanString(this.physicMsgTimestamp));</span>
+<span class="fc" id="L56">            log.info(&quot;store checkpoint file logicsMsgTimestamp &quot; + this.logicsMsgTimestamp + &quot;, &quot;</span>
+<span class="fc" id="L57">                + UtilAll.timeMillisToHumanString(this.logicsMsgTimestamp));</span>
+<span class="fc" id="L58">            log.info(&quot;store checkpoint file indexMsgTimestamp &quot; + this.indexMsgTimestamp + &quot;, &quot;</span>
+<span class="fc" id="L59">                + UtilAll.timeMillisToHumanString(this.indexMsgTimestamp));</span>
+        } else {
+<span class="fc" id="L61">            log.info(&quot;store checkpoint file not exists, &quot; + scpPath);</span>
+        }
+<span class="fc" id="L63">    }</span>
+
+    public void shutdown() {
+<span class="fc" id="L66">        this.flush();</span>
+
+        // unmap mappedByteBuffer
+<span class="fc" id="L69">        MappedFile.clean(this.mappedByteBuffer);</span>
+
+        try {
+<span class="fc" id="L72">            this.fileChannel.close();</span>
+<span class="nc" id="L73">        } catch (IOException e) {</span>
+<span class="nc" id="L74">            e.printStackTrace();</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
+
+    public void flush() {
+<span class="fc" id="L79">        this.mappedByteBuffer.putLong(0, this.physicMsgTimestamp);</span>
+<span class="fc" id="L80">        this.mappedByteBuffer.putLong(8, this.logicsMsgTimestamp);</span>
+<span class="fc" id="L81">        this.mappedByteBuffer.putLong(16, this.indexMsgTimestamp);</span>
+<span class="fc" id="L82">        this.mappedByteBuffer.force();</span>
+<span class="fc" id="L83">    }</span>
+
+    public long getPhysicMsgTimestamp() {
+<span class="fc" id="L86">        return physicMsgTimestamp;</span>
+    }
+
+    public void setPhysicMsgTimestamp(long physicMsgTimestamp) {
+<span class="fc" id="L90">        this.physicMsgTimestamp = physicMsgTimestamp;</span>
+<span class="fc" id="L91">    }</span>
+
+    public long getLogicsMsgTimestamp() {
+<span class="fc" id="L94">        return logicsMsgTimestamp;</span>
+    }
+
+    public void setLogicsMsgTimestamp(long logicsMsgTimestamp) {
+<span class="fc" id="L98">        this.logicsMsgTimestamp = logicsMsgTimestamp;</span>
+<span class="fc" id="L99">    }</span>
+
+    public long getMinTimestampIndex() {
+<span class="nc" id="L102">        return Math.min(this.getMinTimestamp(), this.indexMsgTimestamp);</span>
+    }
+
+    public long getMinTimestamp() {
+<span class="fc" id="L106">        long min = Math.min(this.physicMsgTimestamp, this.logicsMsgTimestamp);</span>
+
+        // fixed https://github.org/apache/rocketmqissues/467
+<span class="fc" id="L109">        min -= 1000 * 3;</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (min &lt; 0)</span>
+<span class="nc" id="L111">            min = 0;</span>
+
+<span class="fc" id="L113">        return min;</span>
+    }
+
+    public long getIndexMsgTimestamp() {
+<span class="nc" id="L117">        return indexMsgTimestamp;</span>
+    }
+
+    public void setIndexMsgTimestamp(long indexMsgTimestamp) {
+<span class="nc" id="L121">        this.indexMsgTimestamp = indexMsgTimestamp;</span>
+<span class="nc" id="L122">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

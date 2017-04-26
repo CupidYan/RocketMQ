@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionGroupConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-common 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.common.subscription</a> &gt; <span class="el_source">SubscriptionGroupConfig.java</span></div><h1>SubscriptionGroupConfig.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.rocketmq.common.subscription;
+
+import org.apache.rocketmq.common.MixAll;
+
+<span class="nc" id="L22">public class SubscriptionGroupConfig {</span>
+
+    private String groupName;
+
+<span class="nc" id="L26">    private boolean consumeEnable = true;</span>
+<span class="nc" id="L27">    private boolean consumeFromMinEnable = true;</span>
+
+<span class="nc" id="L29">    private boolean consumeBroadcastEnable = true;</span>
+
+<span class="nc" id="L31">    private int retryQueueNums = 1;</span>
+
+<span class="nc" id="L33">    private int retryMaxTimes = 16;</span>
+
+<span class="nc" id="L35">    private long brokerId = MixAll.MASTER_ID;</span>
+
+<span class="nc" id="L37">    private long whichBrokerWhenConsumeSlowly = 1;</span>
+
+<span class="nc" id="L39">    private boolean notifyConsumerIdsChangedEnable = true;</span>
+
+    public String getGroupName() {
+<span class="nc" id="L42">        return groupName;</span>
+    }
+
+    public void setGroupName(String groupName) {
+<span class="nc" id="L46">        this.groupName = groupName;</span>
+<span class="nc" id="L47">    }</span>
+
+    public boolean isConsumeEnable() {
+<span class="nc" id="L50">        return consumeEnable;</span>
+    }
+
+    public void setConsumeEnable(boolean consumeEnable) {
+<span class="nc" id="L54">        this.consumeEnable = consumeEnable;</span>
+<span class="nc" id="L55">    }</span>
+
+    public boolean isConsumeFromMinEnable() {
+<span class="nc" id="L58">        return consumeFromMinEnable;</span>
+    }
+
+    public void setConsumeFromMinEnable(boolean consumeFromMinEnable) {
+<span class="nc" id="L62">        this.consumeFromMinEnable = consumeFromMinEnable;</span>
+<span class="nc" id="L63">    }</span>
+
+    public boolean isConsumeBroadcastEnable() {
+<span class="nc" id="L66">        return consumeBroadcastEnable;</span>
+    }
+
+    public void setConsumeBroadcastEnable(boolean consumeBroadcastEnable) {
+<span class="nc" id="L70">        this.consumeBroadcastEnable = consumeBroadcastEnable;</span>
+<span class="nc" id="L71">    }</span>
+
+    public int getRetryQueueNums() {
+<span class="nc" id="L74">        return retryQueueNums;</span>
+    }
+
+    public void setRetryQueueNums(int retryQueueNums) {
+<span class="nc" id="L78">        this.retryQueueNums = retryQueueNums;</span>
+<span class="nc" id="L79">    }</span>
+
+    public int getRetryMaxTimes() {
+<span class="nc" id="L82">        return retryMaxTimes;</span>
+    }
+
+    public void setRetryMaxTimes(int retryMaxTimes) {
+<span class="nc" id="L86">        this.retryMaxTimes = retryMaxTimes;</span>
+<span class="nc" id="L87">    }</span>
+
+    public long getBrokerId() {
+<span class="nc" id="L90">        return brokerId;</span>
+    }
+
+    public void setBrokerId(long brokerId) {
+<span class="nc" id="L94">        this.brokerId = brokerId;</span>
+<span class="nc" id="L95">    }</span>
+
+    public long getWhichBrokerWhenConsumeSlowly() {
+<span class="nc" id="L98">        return whichBrokerWhenConsumeSlowly;</span>
+    }
+
+    public void setWhichBrokerWhenConsumeSlowly(long whichBrokerWhenConsumeSlowly) {
+<span class="nc" id="L102">        this.whichBrokerWhenConsumeSlowly = whichBrokerWhenConsumeSlowly;</span>
+<span class="nc" id="L103">    }</span>
+
+    public boolean isNotifyConsumerIdsChangedEnable() {
+<span class="nc" id="L106">        return notifyConsumerIdsChangedEnable;</span>
+    }
+
+    public void setNotifyConsumerIdsChangedEnable(final boolean notifyConsumerIdsChangedEnable) {
+<span class="nc" id="L110">        this.notifyConsumerIdsChangedEnable = notifyConsumerIdsChangedEnable;</span>
+<span class="nc" id="L111">    }</span>
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L115">        final int prime = 31;</span>
+<span class="nc" id="L116">        int result = 1;</span>
+<span class="nc" id="L117">        result = prime * result + (int) (brokerId ^ (brokerId &gt;&gt;&gt; 32));</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        result = prime * result + (consumeBroadcastEnable ? 1231 : 1237);</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        result = prime * result + (consumeEnable ? 1231 : 1237);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        result = prime * result + (consumeFromMinEnable ? 1231 : 1237);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        result = prime * result + (notifyConsumerIdsChangedEnable ? 1231 : 1237);</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        result = prime * result + ((groupName == null) ? 0 : groupName.hashCode());</span>
+<span class="nc" id="L123">        result = prime * result + retryMaxTimes;</span>
+<span class="nc" id="L124">        result = prime * result + retryQueueNums;</span>
+<span class="nc" id="L125">        result =</span>
+            prime * result + (int) (whichBrokerWhenConsumeSlowly ^ (whichBrokerWhenConsumeSlowly &gt;&gt;&gt; 32));
+<span class="nc" id="L127">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L133">            return true;</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L135">            return false;</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L137">            return false;</span>
+<span class="nc" id="L138">        SubscriptionGroupConfig other = (SubscriptionGroupConfig) obj;</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (brokerId != other.brokerId)</span>
+<span class="nc" id="L140">            return false;</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (consumeBroadcastEnable != other.consumeBroadcastEnable)</span>
+<span class="nc" id="L142">            return false;</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        if (consumeEnable != other.consumeEnable)</span>
+<span class="nc" id="L144">            return false;</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (consumeFromMinEnable != other.consumeFromMinEnable)</span>
+<span class="nc" id="L146">            return false;</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (groupName == null) {</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (other.groupName != null)</span>
+<span class="nc" id="L149">                return false;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        } else if (!groupName.equals(other.groupName))</span>
+<span class="nc" id="L151">            return false;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (retryMaxTimes != other.retryMaxTimes)</span>
+<span class="nc" id="L153">            return false;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (retryQueueNums != other.retryQueueNums)</span>
+<span class="nc" id="L155">            return false;</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        if (whichBrokerWhenConsumeSlowly != other.whichBrokerWhenConsumeSlowly)</span>
+<span class="nc" id="L157">            return false;</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (notifyConsumerIdsChangedEnable != other.notifyConsumerIdsChangedEnable)</span>
+<span class="nc" id="L159">            return false;</span>
+<span class="nc" id="L160">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L165">        return &quot;SubscriptionGroupConfig [groupName=&quot; + groupName + &quot;, consumeEnable=&quot; + consumeEnable</span>
+            + &quot;, consumeFromMinEnable=&quot; + consumeFromMinEnable + &quot;, consumeBroadcastEnable=&quot;
+            + consumeBroadcastEnable + &quot;, retryQueueNums=&quot; + retryQueueNums + &quot;, retryMaxTimes=&quot;
+            + retryMaxTimes + &quot;, brokerId=&quot; + brokerId + &quot;, whichBrokerWhenConsumeSlowly=&quot;
+            + whichBrokerWhenConsumeSlowly + &quot;, notifyConsumerIdsChangedEnable=&quot;
+            + notifyConsumerIdsChangedEnable + &quot;]&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

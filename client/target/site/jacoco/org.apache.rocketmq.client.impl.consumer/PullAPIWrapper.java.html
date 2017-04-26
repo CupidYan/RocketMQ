@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PullAPIWrapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client.impl.consumer</a> &gt; <span class="el_source">PullAPIWrapper.java</span></div><h1>PullAPIWrapper.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.client.impl.consumer;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import org.apache.rocketmq.client.consumer.PullCallback;
+import org.apache.rocketmq.client.consumer.PullResult;
+import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.hook.FilterMessageContext;
+import org.apache.rocketmq.client.hook.FilterMessageHook;
+import org.apache.rocketmq.client.impl.CommunicationMode;
+import org.apache.rocketmq.client.impl.FindBrokerResult;
+import org.apache.rocketmq.client.impl.factory.MQClientInstance;
+import org.apache.rocketmq.client.log.ClientLogger;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
+import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.common.sysflag.PullSysFlag;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+import org.slf4j.Logger;
+
+public class PullAPIWrapper {
+<span class="fc" id="L50">    private final Logger log = ClientLogger.getLog();</span>
+    private final MQClientInstance mQClientFactory;
+    private final String consumerGroup;
+    private final boolean unitMode;
+<span class="fc" id="L54">    private ConcurrentHashMap&lt;MessageQueue, AtomicLong/* brokerId */&gt; pullFromWhichNodeTable =</span>
+        new ConcurrentHashMap&lt;MessageQueue, AtomicLong&gt;(32);
+<span class="fc" id="L56">    private volatile boolean connectBrokerByUser = false;</span>
+<span class="fc" id="L57">    private volatile long defaultBrokerId = MixAll.MASTER_ID;</span>
+<span class="fc" id="L58">    private Random random = new Random(System.currentTimeMillis());</span>
+<span class="fc" id="L59">    private ArrayList&lt;FilterMessageHook&gt; filterMessageHookList = new ArrayList&lt;FilterMessageHook&gt;();</span>
+
+<span class="fc" id="L61">    public PullAPIWrapper(MQClientInstance mQClientFactory, String consumerGroup, boolean unitMode) {</span>
+<span class="fc" id="L62">        this.mQClientFactory = mQClientFactory;</span>
+<span class="fc" id="L63">        this.consumerGroup = consumerGroup;</span>
+<span class="fc" id="L64">        this.unitMode = unitMode;</span>
+<span class="fc" id="L65">    }</span>
+
+    public PullResult processPullResult(final MessageQueue mq, final PullResult pullResult,
+        final SubscriptionData subscriptionData) {
+<span class="fc" id="L69">        PullResultExt pullResultExt = (PullResultExt) pullResult;</span>
+
+<span class="fc" id="L71">        this.updatePullFromWhichNode(mq, pullResultExt.getSuggestWhichBrokerId());</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (PullStatus.FOUND == pullResult.getPullStatus()) {</span>
+<span class="fc" id="L73">            ByteBuffer byteBuffer = ByteBuffer.wrap(pullResultExt.getMessageBinary());</span>
+<span class="fc" id="L74">            List&lt;MessageExt&gt; msgList = MessageDecoder.decodes(byteBuffer);</span>
+
+<span class="fc" id="L76">            List&lt;MessageExt&gt; msgListFilterAgain = msgList;</span>
+<span class="pc bpc" id="L77" title="3 of 4 branches missed.">            if (!subscriptionData.getTagsSet().isEmpty() &amp;&amp; !subscriptionData.isClassFilterMode()) {</span>
+<span class="nc" id="L78">                msgListFilterAgain = new ArrayList&lt;MessageExt&gt;(msgList.size());</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                for (MessageExt msg : msgList) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">                    if (msg.getTags() != null) {</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">                        if (subscriptionData.getTagsSet().contains(msg.getTags())) {</span>
+<span class="nc" id="L82">                            msgListFilterAgain.add(msg);</span>
+                        }
+                    }
+<span class="nc" id="L85">                }</span>
+            }
+
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (this.hasHook()) {</span>
+<span class="nc" id="L89">                FilterMessageContext filterMessageContext = new FilterMessageContext();</span>
+<span class="nc" id="L90">                filterMessageContext.setUnitMode(unitMode);</span>
+<span class="nc" id="L91">                filterMessageContext.setMsgList(msgListFilterAgain);</span>
+<span class="nc" id="L92">                this.executeHook(filterMessageContext);</span>
+            }
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            for (MessageExt msg : msgListFilterAgain) {</span>
+<span class="fc" id="L96">                MessageAccessor.putProperty(msg, MessageConst.PROPERTY_MIN_OFFSET,</span>
+<span class="fc" id="L97">                    Long.toString(pullResult.getMinOffset()));</span>
+<span class="fc" id="L98">                MessageAccessor.putProperty(msg, MessageConst.PROPERTY_MAX_OFFSET,</span>
+<span class="fc" id="L99">                    Long.toString(pullResult.getMaxOffset()));</span>
+<span class="fc" id="L100">            }</span>
+
+<span class="fc" id="L102">            pullResultExt.setMsgFoundList(msgListFilterAgain);</span>
+        }
+
+<span class="fc" id="L105">        pullResultExt.setMessageBinary(null);</span>
+
+<span class="fc" id="L107">        return pullResult;</span>
+    }
+
+    public void updatePullFromWhichNode(final MessageQueue mq, final long brokerId) {
+<span class="fc" id="L111">        AtomicLong suggest = this.pullFromWhichNodeTable.get(mq);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (null == suggest) {</span>
+<span class="fc" id="L113">            this.pullFromWhichNodeTable.put(mq, new AtomicLong(brokerId));</span>
+        } else {
+<span class="fc" id="L115">            suggest.set(brokerId);</span>
+        }
+<span class="fc" id="L117">    }</span>
+
+    public boolean hasHook() {
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        return !this.filterMessageHookList.isEmpty();</span>
+    }
+
+    public void executeHook(final FilterMessageContext context) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (!this.filterMessageHookList.isEmpty()) {</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            for (FilterMessageHook hook : this.filterMessageHookList) {</span>
+                try {
+<span class="nc" id="L127">                    hook.filterMessage(context);</span>
+<span class="nc" id="L128">                } catch (Throwable e) {</span>
+<span class="nc" id="L129">                    log.error(&quot;execute hook error. hookName={}&quot;, hook.hookName());</span>
+<span class="nc" id="L130">                }</span>
+<span class="nc" id="L131">            }</span>
+        }
+<span class="nc" id="L133">    }</span>
+
+    public PullResult pullKernelImpl(
+        final MessageQueue mq,
+        final String subExpression,
+        final long subVersion,
+        final long offset,
+        final int maxNums,
+        final int sysFlag,
+        final long commitOffset,
+        final long brokerSuspendMaxTimeMillis,
+        final long timeoutMillis,
+        final CommunicationMode communicationMode,
+        final PullCallback pullCallback
+    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+<span class="fc" id="L148">        FindBrokerResult findBrokerResult =</span>
+<span class="fc" id="L149">            this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),</span>
+<span class="fc" id="L150">                this.recalculatePullFromWhichNode(mq), false);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (null == findBrokerResult) {</span>
+<span class="nc" id="L152">            this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());</span>
+<span class="nc" id="L153">            findBrokerResult =</span>
+<span class="nc" id="L154">                this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),</span>
+<span class="nc" id="L155">                    this.recalculatePullFromWhichNode(mq), false);</span>
+        }
+
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        if (findBrokerResult != null) {</span>
+<span class="fc" id="L159">            int sysFlagInner = sysFlag;</span>
+
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (findBrokerResult.isSlave()) {</span>
+<span class="nc" id="L162">                sysFlagInner = PullSysFlag.clearCommitOffsetFlag(sysFlagInner);</span>
+            }
+
+<span class="fc" id="L165">            PullMessageRequestHeader requestHeader = new PullMessageRequestHeader();</span>
+<span class="fc" id="L166">            requestHeader.setConsumerGroup(this.consumerGroup);</span>
+<span class="fc" id="L167">            requestHeader.setTopic(mq.getTopic());</span>
+<span class="fc" id="L168">            requestHeader.setQueueId(mq.getQueueId());</span>
+<span class="fc" id="L169">            requestHeader.setQueueOffset(offset);</span>
+<span class="fc" id="L170">            requestHeader.setMaxMsgNums(maxNums);</span>
+<span class="fc" id="L171">            requestHeader.setSysFlag(sysFlagInner);</span>
+<span class="fc" id="L172">            requestHeader.setCommitOffset(commitOffset);</span>
+<span class="fc" id="L173">            requestHeader.setSuspendTimeoutMillis(brokerSuspendMaxTimeMillis);</span>
+<span class="fc" id="L174">            requestHeader.setSubscription(subExpression);</span>
+<span class="fc" id="L175">            requestHeader.setSubVersion(subVersion);</span>
+
+<span class="fc" id="L177">            String brokerAddr = findBrokerResult.getBrokerAddr();</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {</span>
+<span class="nc" id="L179">                brokerAddr = computPullFromWhichFilterServer(mq.getTopic(), brokerAddr);</span>
+            }
+
+<span class="fc" id="L182">            PullResult pullResult = this.mQClientFactory.getMQClientAPIImpl().pullMessage(</span>
+                brokerAddr,
+                requestHeader,
+                timeoutMillis,
+                communicationMode,
+                pullCallback);
+
+<span class="fc" id="L189">            return pullResult;</span>
+        }
+
+<span class="nc" id="L192">        throw new MQClientException(&quot;The broker[&quot; + mq.getBrokerName() + &quot;] not exist&quot;, null);</span>
+    }
+
+    public long recalculatePullFromWhichNode(final MessageQueue mq) {
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (this.isConnectBrokerByUser()) {</span>
+<span class="nc" id="L197">            return this.defaultBrokerId;</span>
+        }
+
+<span class="fc" id="L200">        AtomicLong suggest = this.pullFromWhichNodeTable.get(mq);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (suggest != null) {</span>
+<span class="fc" id="L202">            return suggest.get();</span>
+        }
+
+<span class="fc" id="L205">        return MixAll.MASTER_ID;</span>
+    }
+
+    private String computPullFromWhichFilterServer(final String topic, final String brokerAddr)
+        throws MQClientException {
+<span class="nc" id="L210">        ConcurrentHashMap&lt;String, TopicRouteData&gt; topicRouteTable = this.mQClientFactory.getTopicRouteTable();</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        if (topicRouteTable != null) {</span>
+<span class="nc" id="L212">            TopicRouteData topicRouteData = topicRouteTable.get(topic);</span>
+<span class="nc" id="L213">            List&lt;String&gt; list = topicRouteData.getFilterServerTable().get(brokerAddr);</span>
+
+<span class="nc bnc" id="L215" title="All 4 branches missed.">            if (list != null &amp;&amp; !list.isEmpty()) {</span>
+<span class="nc" id="L216">                return list.get(randomNum() % list.size());</span>
+            }
+        }
+
+<span class="nc" id="L220">        throw new MQClientException(&quot;Find Filter Server Failed, Broker Addr: &quot; + brokerAddr + &quot; topic: &quot;</span>
+            + topic, null);
+    }
+
+    public boolean isConnectBrokerByUser() {
+<span class="fc" id="L225">        return connectBrokerByUser;</span>
+    }
+
+    public void setConnectBrokerByUser(boolean connectBrokerByUser) {
+<span class="nc" id="L229">        this.connectBrokerByUser = connectBrokerByUser;</span>
+
+<span class="nc" id="L231">    }</span>
+
+    public int randomNum() {
+<span class="nc" id="L234">        int value = random.nextInt();</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (value &lt; 0) {</span>
+<span class="nc" id="L236">            value = Math.abs(value);</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">            if (value &lt; 0)</span>
+<span class="nc" id="L238">                value = 0;</span>
+        }
+<span class="nc" id="L240">        return value;</span>
+    }
+
+    public void registerFilterMessageHook(ArrayList&lt;FilterMessageHook&gt; filterMessageHookList) {
+<span class="fc" id="L244">        this.filterMessageHookList = filterMessageHookList;</span>
+<span class="fc" id="L245">    }</span>
+
+    public long getDefaultBrokerId() {
+<span class="nc" id="L248">        return defaultBrokerId;</span>
+    }
+
+    public void setDefaultBrokerId(long defaultBrokerId) {
+<span class="nc" id="L252">        this.defaultBrokerId = defaultBrokerId;</span>
+<span class="nc" id="L253">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

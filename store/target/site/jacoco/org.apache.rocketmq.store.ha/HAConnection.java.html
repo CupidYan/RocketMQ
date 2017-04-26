@@ -1,0 +1,400 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HAConnection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store.ha</a> &gt; <span class="el_source">HAConnection.java</span></div><h1>HAConnection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store.ha;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import org.apache.rocketmq.common.ServiceThread;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class HAConnection {
+<span class="nc" id="L32">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+    private final HAService haService;
+    private final SocketChannel socketChannel;
+    private final String clientAddr;
+    private WriteSocketService writeSocketService;
+    private ReadSocketService readSocketService;
+
+<span class="nc" id="L39">    private volatile long slaveRequestOffset = -1;</span>
+<span class="nc" id="L40">    private volatile long slaveAckOffset = -1;</span>
+
+<span class="nc" id="L42">    public HAConnection(final HAService haService, final SocketChannel socketChannel) throws IOException {</span>
+<span class="nc" id="L43">        this.haService = haService;</span>
+<span class="nc" id="L44">        this.socketChannel = socketChannel;</span>
+<span class="nc" id="L45">        this.clientAddr = this.socketChannel.socket().getRemoteSocketAddress().toString();</span>
+<span class="nc" id="L46">        this.socketChannel.configureBlocking(false);</span>
+<span class="nc" id="L47">        this.socketChannel.socket().setSoLinger(false, -1);</span>
+<span class="nc" id="L48">        this.socketChannel.socket().setTcpNoDelay(true);</span>
+<span class="nc" id="L49">        this.socketChannel.socket().setReceiveBufferSize(1024 * 64);</span>
+<span class="nc" id="L50">        this.socketChannel.socket().setSendBufferSize(1024 * 64);</span>
+<span class="nc" id="L51">        this.writeSocketService = new WriteSocketService(this.socketChannel);</span>
+<span class="nc" id="L52">        this.readSocketService = new ReadSocketService(this.socketChannel);</span>
+<span class="nc" id="L53">        this.haService.getConnectionCount().incrementAndGet();</span>
+<span class="nc" id="L54">    }</span>
+
+    public void start() {
+<span class="nc" id="L57">        this.readSocketService.start();</span>
+<span class="nc" id="L58">        this.writeSocketService.start();</span>
+<span class="nc" id="L59">    }</span>
+
+    public void shutdown() {
+<span class="nc" id="L62">        this.writeSocketService.shutdown(true);</span>
+<span class="nc" id="L63">        this.readSocketService.shutdown(true);</span>
+<span class="nc" id="L64">        this.close();</span>
+<span class="nc" id="L65">    }</span>
+
+    public void close() {
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (this.socketChannel != null) {</span>
+            try {
+<span class="nc" id="L70">                this.socketChannel.close();</span>
+<span class="nc" id="L71">            } catch (IOException e) {</span>
+<span class="nc" id="L72">                HAConnection.log.error(&quot;&quot;, e);</span>
+<span class="nc" id="L73">            }</span>
+        }
+<span class="nc" id="L75">    }</span>
+
+    public SocketChannel getSocketChannel() {
+<span class="nc" id="L78">        return socketChannel;</span>
+    }
+
+    /**
+
+     *
+     */
+    class ReadSocketService extends ServiceThread {
+        private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;
+        private final Selector selector;
+        private final SocketChannel socketChannel;
+<span class="nc" id="L89">        private final ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);</span>
+<span class="nc" id="L90">        private int processPostion = 0;</span>
+<span class="nc" id="L91">        private volatile long lastReadTimestamp = System.currentTimeMillis();</span>
+
+<span class="nc" id="L93">        public ReadSocketService(final SocketChannel socketChannel) throws IOException {</span>
+<span class="nc" id="L94">            this.selector = RemotingUtil.openSelector();</span>
+<span class="nc" id="L95">            this.socketChannel = socketChannel;</span>
+<span class="nc" id="L96">            this.socketChannel.register(this.selector, SelectionKey.OP_READ);</span>
+<span class="nc" id="L97">            this.thread.setDaemon(true);</span>
+<span class="nc" id="L98">        }</span>
+
+        @Override
+        public void run() {
+<span class="nc" id="L102">            HAConnection.log.info(this.getServiceName() + &quot; service started&quot;);</span>
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            while (!this.isStopped()) {</span>
+                try {
+<span class="nc" id="L106">                    this.selector.select(1000);</span>
+<span class="nc" id="L107">                    boolean ok = this.processReadEvent();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                    if (!ok) {</span>
+<span class="nc" id="L109">                        HAConnection.log.error(&quot;processReadEvent error&quot;);</span>
+<span class="nc" id="L110">                        break;</span>
+                    }
+
+<span class="nc" id="L113">                    long interval = HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastReadTimestamp;</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                    if (interval &gt; HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaHousekeepingInterval()) {</span>
+<span class="nc" id="L115">                        log.warn(&quot;ha housekeeping, found this connection[&quot; + HAConnection.this.clientAddr + &quot;] expired, &quot; + interval);</span>
+<span class="nc" id="L116">                        break;</span>
+                    }
+<span class="nc" id="L118">                } catch (Exception e) {</span>
+<span class="nc" id="L119">                    HAConnection.log.error(this.getServiceName() + &quot; service has exception.&quot;, e);</span>
+<span class="nc" id="L120">                    break;</span>
+<span class="nc" id="L121">                }</span>
+            }
+
+<span class="nc" id="L124">            this.makeStop();</span>
+
+<span class="nc" id="L126">            writeSocketService.makeStop();</span>
+
+<span class="nc" id="L128">            haService.removeConnection(HAConnection.this);</span>
+
+<span class="nc" id="L130">            HAConnection.this.haService.getConnectionCount().decrementAndGet();</span>
+
+<span class="nc" id="L132">            SelectionKey sk = this.socketChannel.keyFor(this.selector);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (sk != null) {</span>
+<span class="nc" id="L134">                sk.cancel();</span>
+            }
+
+            try {
+<span class="nc" id="L138">                this.selector.close();</span>
+<span class="nc" id="L139">                this.socketChannel.close();</span>
+<span class="nc" id="L140">            } catch (IOException e) {</span>
+<span class="nc" id="L141">                HAConnection.log.error(&quot;&quot;, e);</span>
+<span class="nc" id="L142">            }</span>
+
+<span class="nc" id="L144">            HAConnection.log.info(this.getServiceName() + &quot; service end&quot;);</span>
+<span class="nc" id="L145">        }</span>
+
+        @Override
+        public String getServiceName() {
+<span class="nc" id="L149">            return ReadSocketService.class.getSimpleName();</span>
+        }
+
+        private boolean processReadEvent() {
+<span class="nc" id="L153">            int readSizeZeroTimes = 0;</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (!this.byteBufferRead.hasRemaining()) {</span>
+<span class="nc" id="L156">                this.byteBufferRead.flip();</span>
+<span class="nc" id="L157">                this.processPostion = 0;</span>
+            }
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            while (this.byteBufferRead.hasRemaining()) {</span>
+                try {
+<span class="nc" id="L162">                    int readSize = this.socketChannel.read(this.byteBufferRead);</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                    if (readSize &gt; 0) {</span>
+<span class="nc" id="L164">                        readSizeZeroTimes = 0;</span>
+<span class="nc" id="L165">                        this.lastReadTimestamp = HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now();</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">                        if ((this.byteBufferRead.position() - this.processPostion) &gt;= 8) {</span>
+<span class="nc" id="L167">                            int pos = this.byteBufferRead.position() - (this.byteBufferRead.position() % 8);</span>
+<span class="nc" id="L168">                            long readOffset = this.byteBufferRead.getLong(pos - 8);</span>
+<span class="nc" id="L169">                            this.processPostion = pos;</span>
+
+<span class="nc" id="L171">                            HAConnection.this.slaveAckOffset = readOffset;</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                            if (HAConnection.this.slaveRequestOffset &lt; 0) {</span>
+<span class="nc" id="L173">                                HAConnection.this.slaveRequestOffset = readOffset;</span>
+<span class="nc" id="L174">                                log.info(&quot;slave[&quot; + HAConnection.this.clientAddr + &quot;] request offset &quot; + readOffset);</span>
+                            }
+
+<span class="nc" id="L177">                            HAConnection.this.haService.notifyTransferSome(HAConnection.this.slaveAckOffset);</span>
+<span class="nc" id="L178">                        }</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">                    } else if (readSize == 0) {</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                        if (++readSizeZeroTimes &gt;= 3) {</span>
+<span class="nc" id="L181">                            break;</span>
+                        }
+                    } else {
+<span class="nc" id="L184">                        log.error(&quot;read socket[&quot; + HAConnection.this.clientAddr + &quot;] &lt; 0&quot;);</span>
+<span class="nc" id="L185">                        return false;</span>
+                    }
+<span class="nc" id="L187">                } catch (IOException e) {</span>
+<span class="nc" id="L188">                    log.error(&quot;processReadEvent exception&quot;, e);</span>
+<span class="nc" id="L189">                    return false;</span>
+<span class="nc" id="L190">                }</span>
+            }
+
+<span class="nc" id="L193">            return true;</span>
+        }
+    }
+
+    /**
+
+     *
+     */
+    class WriteSocketService extends ServiceThread {
+        private final Selector selector;
+        private final SocketChannel socketChannel;
+
+<span class="nc" id="L205">        private final int headerSize = 8 + 4;</span>
+<span class="nc" id="L206">        private final ByteBuffer byteBufferHeader = ByteBuffer.allocate(headerSize);</span>
+<span class="nc" id="L207">        private long nextTransferFromWhere = -1;</span>
+        private SelectMappedBufferResult selectMappedBufferResult;
+<span class="nc" id="L209">        private boolean lastWriteOver = true;</span>
+<span class="nc" id="L210">        private long lastWriteTimestamp = System.currentTimeMillis();</span>
+
+<span class="nc" id="L212">        public WriteSocketService(final SocketChannel socketChannel) throws IOException {</span>
+<span class="nc" id="L213">            this.selector = RemotingUtil.openSelector();</span>
+<span class="nc" id="L214">            this.socketChannel = socketChannel;</span>
+<span class="nc" id="L215">            this.socketChannel.register(this.selector, SelectionKey.OP_WRITE);</span>
+<span class="nc" id="L216">            this.thread.setDaemon(true);</span>
+<span class="nc" id="L217">        }</span>
+
+        @Override
+        public void run() {
+<span class="nc" id="L221">            HAConnection.log.info(this.getServiceName() + &quot; service started&quot;);</span>
+
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            while (!this.isStopped()) {</span>
+                try {
+<span class="nc" id="L225">                    this.selector.select(1000);</span>
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">                    if (-1 == HAConnection.this.slaveRequestOffset) {</span>
+<span class="nc" id="L228">                        Thread.sleep(10);</span>
+<span class="nc" id="L229">                        continue;</span>
+                    }
+
+<span class="nc bnc" id="L232" title="All 2 branches missed.">                    if (-1 == this.nextTransferFromWhere) {</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                        if (0 == HAConnection.this.slaveRequestOffset) {</span>
+<span class="nc" id="L234">                            long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();</span>
+<span class="nc" id="L235">                            masterOffset =</span>
+                                masterOffset
+<span class="nc" id="L237">                                    - (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()</span>
+<span class="nc" id="L238">                                    .getMapedFileSizeCommitLog());</span>
+
+<span class="nc bnc" id="L240" title="All 2 branches missed.">                            if (masterOffset &lt; 0) {</span>
+<span class="nc" id="L241">                                masterOffset = 0;</span>
+                            }
+
+<span class="nc" id="L244">                            this.nextTransferFromWhere = masterOffset;</span>
+<span class="nc" id="L245">                        } else {</span>
+<span class="nc" id="L246">                            this.nextTransferFromWhere = HAConnection.this.slaveRequestOffset;</span>
+                        }
+
+<span class="nc" id="L249">                        log.info(&quot;master transfer data from &quot; + this.nextTransferFromWhere + &quot; to slave[&quot; + HAConnection.this.clientAddr</span>
+<span class="nc" id="L250">                            + &quot;], and slave request &quot; + HAConnection.this.slaveRequestOffset);</span>
+                    }
+
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                    if (this.lastWriteOver) {</span>
+
+<span class="nc" id="L255">                        long interval =</span>
+<span class="nc" id="L256">                            HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;</span>
+
+<span class="nc" id="L258">                        if (interval &gt; HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">                            .getHaSendHeartbeatInterval()) {</span>
+
+                            // Build Header
+<span class="nc" id="L262">                            this.byteBufferHeader.position(0);</span>
+<span class="nc" id="L263">                            this.byteBufferHeader.limit(headerSize);</span>
+<span class="nc" id="L264">                            this.byteBufferHeader.putLong(this.nextTransferFromWhere);</span>
+<span class="nc" id="L265">                            this.byteBufferHeader.putInt(0);</span>
+<span class="nc" id="L266">                            this.byteBufferHeader.flip();</span>
+
+<span class="nc" id="L268">                            this.lastWriteOver = this.transferData();</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                            if (!this.lastWriteOver)</span>
+<span class="nc" id="L270">                                continue;</span>
+                        }
+<span class="nc" id="L272">                    } else {</span>
+<span class="nc" id="L273">                        this.lastWriteOver = this.transferData();</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">                        if (!this.lastWriteOver)</span>
+<span class="nc" id="L275">                            continue;</span>
+                    }
+
+<span class="nc" id="L278">                    SelectMappedBufferResult selectResult =</span>
+<span class="nc" id="L279">                        HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                    if (selectResult != null) {</span>
+<span class="nc" id="L281">                        int size = selectResult.getSize();</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">                        if (size &gt; HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize()) {</span>
+<span class="nc" id="L283">                            size = HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize();</span>
+                        }
+
+<span class="nc" id="L286">                        long thisOffset = this.nextTransferFromWhere;</span>
+<span class="nc" id="L287">                        this.nextTransferFromWhere += size;</span>
+
+<span class="nc" id="L289">                        selectResult.getByteBuffer().limit(size);</span>
+<span class="nc" id="L290">                        this.selectMappedBufferResult = selectResult;</span>
+
+                        // Build Header
+<span class="nc" id="L293">                        this.byteBufferHeader.position(0);</span>
+<span class="nc" id="L294">                        this.byteBufferHeader.limit(headerSize);</span>
+<span class="nc" id="L295">                        this.byteBufferHeader.putLong(thisOffset);</span>
+<span class="nc" id="L296">                        this.byteBufferHeader.putInt(size);</span>
+<span class="nc" id="L297">                        this.byteBufferHeader.flip();</span>
+
+<span class="nc" id="L299">                        this.lastWriteOver = this.transferData();</span>
+<span class="nc" id="L300">                    } else {</span>
+
+<span class="nc" id="L302">                        HAConnection.this.haService.getWaitNotifyObject().allWaitForRunning(100);</span>
+                    }
+<span class="nc" id="L304">                } catch (Exception e) {</span>
+
+<span class="nc" id="L306">                    HAConnection.log.error(this.getServiceName() + &quot; service has exception.&quot;, e);</span>
+<span class="nc" id="L307">                    break;</span>
+<span class="nc" id="L308">                }</span>
+            }
+
+<span class="nc bnc" id="L311" title="All 2 branches missed.">            if (this.selectMappedBufferResult != null) {</span>
+<span class="nc" id="L312">                this.selectMappedBufferResult.release();</span>
+            }
+
+<span class="nc" id="L315">            this.makeStop();</span>
+
+<span class="nc" id="L317">            readSocketService.makeStop();</span>
+
+<span class="nc" id="L319">            haService.removeConnection(HAConnection.this);</span>
+
+<span class="nc" id="L321">            SelectionKey sk = this.socketChannel.keyFor(this.selector);</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            if (sk != null) {</span>
+<span class="nc" id="L323">                sk.cancel();</span>
+            }
+
+            try {
+<span class="nc" id="L327">                this.selector.close();</span>
+<span class="nc" id="L328">                this.socketChannel.close();</span>
+<span class="nc" id="L329">            } catch (IOException e) {</span>
+<span class="nc" id="L330">                HAConnection.log.error(&quot;&quot;, e);</span>
+<span class="nc" id="L331">            }</span>
+
+<span class="nc" id="L333">            HAConnection.log.info(this.getServiceName() + &quot; service end&quot;);</span>
+<span class="nc" id="L334">        }</span>
+
+        /**
+
+         */
+        private boolean transferData() throws Exception {
+<span class="nc" id="L340">            int writeSizeZeroTimes = 0;</span>
+            // Write Header
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            while (this.byteBufferHeader.hasRemaining()) {</span>
+<span class="nc" id="L343">                int writeSize = this.socketChannel.write(this.byteBufferHeader);</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">                if (writeSize &gt; 0) {</span>
+<span class="nc" id="L345">                    writeSizeZeroTimes = 0;</span>
+<span class="nc" id="L346">                    this.lastWriteTimestamp = HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now();</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">                } else if (writeSize == 0) {</span>
+<span class="nc bnc" id="L348" title="All 2 branches missed.">                    if (++writeSizeZeroTimes &gt;= 3) {</span>
+<span class="nc" id="L349">                        break;</span>
+                    }
+                } else {
+<span class="nc" id="L352">                    throw new Exception(&quot;ha master write header error &lt; 0&quot;);</span>
+                }
+<span class="nc" id="L354">            }</span>
+
+<span class="nc bnc" id="L356" title="All 2 branches missed.">            if (null == this.selectMappedBufferResult) {</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                return !this.byteBufferHeader.hasRemaining();</span>
+            }
+
+<span class="nc" id="L360">            writeSizeZeroTimes = 0;</span>
+
+            // Write Body
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if (!this.byteBufferHeader.hasRemaining()) {</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">                while (this.selectMappedBufferResult.getByteBuffer().hasRemaining()) {</span>
+<span class="nc" id="L365">                    int writeSize = this.socketChannel.write(this.selectMappedBufferResult.getByteBuffer());</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">                    if (writeSize &gt; 0) {</span>
+<span class="nc" id="L367">                        writeSizeZeroTimes = 0;</span>
+<span class="nc" id="L368">                        this.lastWriteTimestamp = HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now();</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">                    } else if (writeSize == 0) {</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">                        if (++writeSizeZeroTimes &gt;= 3) {</span>
+<span class="nc" id="L371">                            break;</span>
+                        }
+                    } else {
+<span class="nc" id="L374">                        throw new Exception(&quot;ha master write body error &lt; 0&quot;);</span>
+                    }
+<span class="nc" id="L376">                }</span>
+            }
+
+<span class="nc bnc" id="L379" title="All 4 branches missed.">            boolean result = !this.byteBufferHeader.hasRemaining() &amp;&amp; !this.selectMappedBufferResult.getByteBuffer().hasRemaining();</span>
+
+<span class="nc bnc" id="L381" title="All 2 branches missed.">            if (!this.selectMappedBufferResult.getByteBuffer().hasRemaining()) {</span>
+<span class="nc" id="L382">                this.selectMappedBufferResult.release();</span>
+<span class="nc" id="L383">                this.selectMappedBufferResult = null;</span>
+            }
+
+<span class="nc" id="L386">            return result;</span>
+        }
+
+        @Override
+        public String getServiceName() {
+<span class="nc" id="L391">            return WriteSocketService.class.getSimpleName();</span>
+        }
+
+        @Override
+        public void shutdown() {
+<span class="nc" id="L396">            super.shutdown();</span>
+<span class="nc" id="L397">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

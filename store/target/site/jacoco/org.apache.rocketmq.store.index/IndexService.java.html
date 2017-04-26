@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-store 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.store.index</a> &gt; <span class="el_source">IndexService.java</span></div><h1>IndexService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.store.index;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.store.DefaultMessageStore;
+import org.apache.rocketmq.store.DispatchRequest;
+import org.apache.rocketmq.store.config.StorePathConfigHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class IndexService {
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);</span>
+    /** Maximum times to attempt index file creation. */
+    private static final int MAX_TRY_IDX_CREATE = 3;
+    private final DefaultMessageStore defaultMessageStore;
+    private final int hashSlotNum;
+    private final int indexNum;
+    private final String storePath;
+<span class="fc" id="L44">    private final ArrayList&lt;IndexFile&gt; indexFileList = new ArrayList&lt;IndexFile&gt;();</span>
+<span class="fc" id="L45">    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();</span>
+
+<span class="fc" id="L47">    public IndexService(final DefaultMessageStore store) {</span>
+<span class="fc" id="L48">        this.defaultMessageStore = store;</span>
+<span class="fc" id="L49">        this.hashSlotNum = store.getMessageStoreConfig().getMaxHashSlotNum();</span>
+<span class="fc" id="L50">        this.indexNum = store.getMessageStoreConfig().getMaxIndexNum();</span>
+<span class="fc" id="L51">        this.storePath =</span>
+<span class="fc" id="L52">            StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());</span>
+<span class="fc" id="L53">    }</span>
+
+    public boolean load(final boolean lastExitOK) {
+<span class="fc" id="L56">        File dir = new File(this.storePath);</span>
+<span class="fc" id="L57">        File[] files = dir.listFiles();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (files != null) {</span>
+            // ascending order
+<span class="fc" id="L60">            Arrays.sort(files);</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">            for (File file : files) {</span>
+                try {
+<span class="nc" id="L63">                    IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);</span>
+<span class="nc" id="L64">                    f.load();</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">                    if (!lastExitOK) {</span>
+<span class="nc" id="L67">                        if (f.getEndTimestamp() &gt; this.defaultMessageStore.getStoreCheckpoint()</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">                            .getIndexMsgTimestamp()) {</span>
+<span class="nc" id="L69">                            f.destroy(0);</span>
+<span class="nc" id="L70">                            continue;</span>
+                        }
+                    }
+
+<span class="nc" id="L74">                    log.info(&quot;load index file OK, &quot; + f.getFileName());</span>
+<span class="nc" id="L75">                    this.indexFileList.add(f);</span>
+<span class="nc" id="L76">                } catch (IOException e) {</span>
+<span class="nc" id="L77">                    log.error(&quot;load file {} error&quot;, file, e);</span>
+<span class="nc" id="L78">                    return false;</span>
+<span class="nc" id="L79">                } catch (NumberFormatException e) {</span>
+<span class="nc" id="L80">                    log.error(&quot;load file {} error&quot;, file, e);</span>
+<span class="nc" id="L81">                }</span>
+            }
+        }
+
+<span class="fc" id="L85">        return true;</span>
+    }
+
+    public void deleteExpiredFile(long offset) {
+<span class="nc" id="L89">        Object[] files = null;</span>
+        try {
+<span class="nc" id="L91">            this.readWriteLock.readLock().lock();</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (this.indexFileList.isEmpty()) {</span>
+<span class="nc" id="L93">                return;</span>
+            }
+
+<span class="nc" id="L96">            long endPhyOffset = this.indexFileList.get(0).getEndPhyOffset();</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (endPhyOffset &lt; offset) {</span>
+<span class="nc" id="L98">                files = this.indexFileList.toArray();</span>
+            }
+<span class="nc" id="L100">        } catch (Exception e) {</span>
+<span class="nc" id="L101">            log.error(&quot;destroy exception&quot;, e);</span>
+        } finally {
+<span class="nc" id="L103">            this.readWriteLock.readLock().unlock();</span>
+<span class="nc" id="L104">        }</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (files != null) {</span>
+<span class="nc" id="L107">            List&lt;IndexFile&gt; fileList = new ArrayList&lt;IndexFile&gt;();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            for (int i = 0; i &lt; (files.length - 1); i++) {</span>
+<span class="nc" id="L109">                IndexFile f = (IndexFile) files[i];</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (f.getEndPhyOffset() &lt; offset) {</span>
+<span class="nc" id="L111">                    fileList.add(f);</span>
+                } else {
+                    break;
+                }
+            }
+
+<span class="nc" id="L117">            this.deleteExpiredFile(fileList);</span>
+        }
+<span class="nc" id="L119">    }</span>
+
+    private void deleteExpiredFile(List&lt;IndexFile&gt; files) {
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (!files.isEmpty()) {</span>
+            try {
+<span class="nc" id="L124">                this.readWriteLock.writeLock().lock();</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                for (IndexFile file : files) {</span>
+<span class="nc" id="L126">                    boolean destroyed = file.destroy(3000);</span>
+<span class="nc bnc" id="L127" title="All 4 branches missed.">                    destroyed = destroyed &amp;&amp; this.indexFileList.remove(file);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                    if (!destroyed) {</span>
+<span class="nc" id="L129">                        log.error(&quot;deleteExpiredFile remove failed.&quot;);</span>
+<span class="nc" id="L130">                        break;</span>
+                    }
+<span class="nc" id="L132">                }</span>
+<span class="nc" id="L133">            } catch (Exception e) {</span>
+<span class="nc" id="L134">                log.error(&quot;deleteExpiredFile has exception.&quot;, e);</span>
+            } finally {
+<span class="nc" id="L136">                this.readWriteLock.writeLock().unlock();</span>
+<span class="nc" id="L137">            }</span>
+        }
+<span class="nc" id="L139">    }</span>
+
+    public void destroy() {
+        try {
+<span class="fc" id="L143">            this.readWriteLock.readLock().lock();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            for (IndexFile f : this.indexFileList) {</span>
+<span class="fc" id="L145">                f.destroy(1000 * 3);</span>
+<span class="fc" id="L146">            }</span>
+<span class="fc" id="L147">            this.indexFileList.clear();</span>
+<span class="nc" id="L148">        } catch (Exception e) {</span>
+<span class="nc" id="L149">            log.error(&quot;destroy exception&quot;, e);</span>
+        } finally {
+<span class="pc" id="L151">            this.readWriteLock.readLock().unlock();</span>
+<span class="pc" id="L152">        }</span>
+<span class="fc" id="L153">    }</span>
+
+    public QueryOffsetResult queryOffset(String topic, String key, int maxNum, long begin, long end) {
+<span class="nc" id="L156">        List&lt;Long&gt; phyOffsets = new ArrayList&lt;Long&gt;(maxNum);</span>
+
+<span class="nc" id="L158">        long indexLastUpdateTimestamp = 0;</span>
+<span class="nc" id="L159">        long indexLastUpdatePhyoffset = 0;</span>
+<span class="nc" id="L160">        maxNum = Math.min(maxNum, this.defaultMessageStore.getMessageStoreConfig().getMaxMsgsNumBatch());</span>
+        try {
+<span class="nc" id="L162">            this.readWriteLock.readLock().lock();</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            if (!this.indexFileList.isEmpty()) {</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">                for (int i = this.indexFileList.size(); i &gt; 0; i--) {</span>
+<span class="nc" id="L165">                    IndexFile f = this.indexFileList.get(i - 1);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">                    boolean lastFile = i == this.indexFileList.size();</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                    if (lastFile) {</span>
+<span class="nc" id="L168">                        indexLastUpdateTimestamp = f.getEndTimestamp();</span>
+<span class="nc" id="L169">                        indexLastUpdatePhyoffset = f.getEndPhyOffset();</span>
+                    }
+
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                    if (f.isTimeMatched(begin, end)) {</span>
+
+<span class="nc" id="L174">                        f.selectPhyOffset(phyOffsets, buildKey(topic, key), maxNum, begin, end, lastFile);</span>
+                    }
+
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                    if (f.getBeginTimestamp() &lt; begin) {</span>
+<span class="nc" id="L178">                        break;</span>
+                    }
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                    if (phyOffsets.size() &gt;= maxNum) {</span>
+<span class="nc" id="L182">                        break;</span>
+                    }
+                }
+            }
+<span class="nc" id="L186">        } catch (Exception e) {</span>
+<span class="nc" id="L187">            log.error(&quot;queryMsg exception&quot;, e);</span>
+        } finally {
+<span class="nc" id="L189">            this.readWriteLock.readLock().unlock();</span>
+<span class="nc" id="L190">        }</span>
+
+<span class="nc" id="L192">        return new QueryOffsetResult(phyOffsets, indexLastUpdateTimestamp, indexLastUpdatePhyoffset);</span>
+    }
+
+    private String buildKey(final String topic, final String key) {
+<span class="nc" id="L196">        return topic + &quot;#&quot; + key;</span>
+    }
+
+    public void buildIndex(DispatchRequest req) {
+<span class="fc" id="L200">        IndexFile indexFile = retryGetAndCreateIndexFile();</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        if (indexFile != null) {</span>
+<span class="fc" id="L202">            long endPhyOffset = indexFile.getEndPhyOffset();</span>
+<span class="fc" id="L203">            DispatchRequest msg = req;</span>
+<span class="fc" id="L204">            String topic = msg.getTopic();</span>
+<span class="fc" id="L205">            String keys = msg.getKeys();</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">            if (msg.getCommitLogOffset() &lt; endPhyOffset) {</span>
+<span class="nc" id="L207">                return;</span>
+            }
+
+<span class="fc" id="L210">            final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());</span>
+<span class="pc bpc" id="L211" title="2 of 3 branches missed.">            switch (tranType) {</span>
+                case MessageSysFlag.TRANSACTION_NOT_TYPE:
+                case MessageSysFlag.TRANSACTION_PREPARED_TYPE:
+                case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
+<span class="fc" id="L215">                    break;</span>
+                case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
+<span class="nc" id="L217">                    return;</span>
+            }
+
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            if (req.getUniqKey() != null) {</span>
+<span class="nc" id="L221">                indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                if (indexFile == null) {</span>
+<span class="nc" id="L223">                    log.error(&quot;putKey error commitlog {} uniqkey {}&quot;, req.getCommitLogOffset(), req.getUniqKey());</span>
+<span class="nc" id="L224">                    return;</span>
+                }
+            }
+
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">            if (keys != null &amp;&amp; keys.length() &gt; 0) {</span>
+<span class="nc" id="L229">                String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">                for (int i = 0; i &lt; keyset.length; i++) {</span>
+<span class="nc" id="L231">                    String key = keyset[i];</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">                    if (key.length() &gt; 0) {</span>
+<span class="nc" id="L233">                        indexFile = putKey(indexFile, msg, buildKey(topic, key));</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                        if (indexFile == null) {</span>
+<span class="nc" id="L235">                            log.error(&quot;putKey error commitlog {} uniqkey {}&quot;, req.getCommitLogOffset(), req.getUniqKey());</span>
+<span class="nc" id="L236">                            return;</span>
+                        }
+                    }
+                }
+            }
+<span class="fc" id="L241">        } else {</span>
+<span class="nc" id="L242">            log.error(&quot;build index error, stop building index&quot;);</span>
+        }
+<span class="fc" id="L244">    }</span>
+
+    private IndexFile putKey(IndexFile indexFile, DispatchRequest msg, String idxKey) {
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        for (boolean ok = indexFile.putKey(idxKey, msg.getCommitLogOffset(), msg.getStoreTimestamp()); !ok; ) {</span>
+<span class="nc" id="L248">            log.warn(&quot;Index file [&quot; + indexFile.getFileName() + &quot;] is full, trying to create another one&quot;);</span>
+
+<span class="nc" id="L250">            indexFile = retryGetAndCreateIndexFile();</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">            if (null == indexFile) {</span>
+<span class="nc" id="L252">                return null;</span>
+            }
+
+<span class="nc" id="L255">            ok = indexFile.putKey(idxKey, msg.getCommitLogOffset(), msg.getStoreTimestamp());</span>
+        }
+
+<span class="nc" id="L258">        return indexFile;</span>
+    }
+
+    /**
+     * Retries to get or create index file.
+     *
+     * @return {@link IndexFile} or null on failure.
+     */
+    public IndexFile retryGetAndCreateIndexFile() {
+<span class="fc" id="L267">        IndexFile indexFile = null;</span>
+
+<span class="pc bpc" id="L269" title="2 of 4 branches missed.">        for (int times = 0; null == indexFile &amp;&amp; times &lt; MAX_TRY_IDX_CREATE; times++) {</span>
+<span class="fc" id="L270">            indexFile = this.getAndCreateLastIndexFile();</span>
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">            if (null != indexFile)</span>
+<span class="fc" id="L272">                break;</span>
+
+            try {
+<span class="nc" id="L275">                log.info(&quot;Tried to create index file &quot; + times + &quot; times&quot;);</span>
+<span class="nc" id="L276">                Thread.sleep(1000);</span>
+<span class="nc" id="L277">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L278">                e.printStackTrace();</span>
+<span class="nc" id="L279">            }</span>
+        }
+
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">        if (null == indexFile) {</span>
+<span class="nc" id="L283">            this.defaultMessageStore.getAccessRights().makeIndexFileError();</span>
+<span class="nc" id="L284">            log.error(&quot;Mark index file cannot build flag&quot;);</span>
+        }
+
+<span class="fc" id="L287">        return indexFile;</span>
+    }
+
+    public IndexFile getAndCreateLastIndexFile() {
+<span class="fc" id="L291">        IndexFile indexFile = null;</span>
+<span class="fc" id="L292">        IndexFile prevIndexFile = null;</span>
+<span class="fc" id="L293">        long lastUpdateEndPhyOffset = 0;</span>
+<span class="fc" id="L294">        long lastUpdateIndexTimestamp = 0;</span>
+
+        {
+<span class="fc" id="L297">            this.readWriteLock.readLock().lock();</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            if (!this.indexFileList.isEmpty()) {</span>
+<span class="fc" id="L299">                IndexFile tmp = this.indexFileList.get(this.indexFileList.size() - 1);</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">                if (!tmp.isWriteFull()) {</span>
+<span class="fc" id="L301">                    indexFile = tmp;</span>
+                } else {
+<span class="nc" id="L303">                    lastUpdateEndPhyOffset = tmp.getEndPhyOffset();</span>
+<span class="nc" id="L304">                    lastUpdateIndexTimestamp = tmp.getEndTimestamp();</span>
+<span class="nc" id="L305">                    prevIndexFile = tmp;</span>
+                }
+            }
+
+<span class="fc" id="L309">            this.readWriteLock.readLock().unlock();</span>
+        }
+
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (indexFile == null) {</span>
+            try {
+<span class="fc" id="L314">                String fileName =</span>
+                    this.storePath + File.separator
+<span class="fc" id="L316">                        + UtilAll.timeMillisToHumanString(System.currentTimeMillis());</span>
+<span class="fc" id="L317">                indexFile =</span>
+                    new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset,
+                        lastUpdateIndexTimestamp);
+<span class="fc" id="L320">                this.readWriteLock.writeLock().lock();</span>
+<span class="fc" id="L321">                this.indexFileList.add(indexFile);</span>
+<span class="nc" id="L322">            } catch (Exception e) {</span>
+<span class="nc" id="L323">                log.error(&quot;getLastIndexFile exception &quot;, e);</span>
+            } finally {
+<span class="pc" id="L325">                this.readWriteLock.writeLock().unlock();</span>
+<span class="pc" id="L326">            }</span>
+
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">            if (indexFile != null) {</span>
+<span class="fc" id="L329">                final IndexFile flushThisFile = prevIndexFile;</span>
+<span class="fc" id="L330">                Thread flushThread = new Thread(new Runnable() {</span>
+                    @Override
+                    public void run() {
+<span class="fc" id="L333">                        IndexService.this.flush(flushThisFile);</span>
+<span class="fc" id="L334">                    }</span>
+                }, &quot;FlushIndexFileThread&quot;);
+
+<span class="fc" id="L337">                flushThread.setDaemon(true);</span>
+<span class="fc" id="L338">                flushThread.start();</span>
+            }
+        }
+
+<span class="fc" id="L342">        return indexFile;</span>
+    }
+
+    public void flush(final IndexFile f) {
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        if (null == f)</span>
+<span class="fc" id="L347">            return;</span>
+
+<span class="nc" id="L349">        long indexMsgTimestamp = 0;</span>
+
+<span class="nc bnc" id="L351" title="All 2 branches missed.">        if (f.isWriteFull()) {</span>
+<span class="nc" id="L352">            indexMsgTimestamp = f.getEndTimestamp();</span>
+        }
+
+<span class="nc" id="L355">        f.flush();</span>
+
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if (indexMsgTimestamp &gt; 0) {</span>
+<span class="nc" id="L358">            this.defaultMessageStore.getStoreCheckpoint().setIndexMsgTimestamp(indexMsgTimestamp);</span>
+<span class="nc" id="L359">            this.defaultMessageStore.getStoreCheckpoint().flush();</span>
+        }
+<span class="nc" id="L361">    }</span>
+
+    public void start() {
+
+<span class="fc" id="L365">    }</span>
+
+    public void shutdown() {
+
+<span class="fc" id="L369">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

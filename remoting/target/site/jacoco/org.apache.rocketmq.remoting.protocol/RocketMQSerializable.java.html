@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RocketMQSerializable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-remoting 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.remoting.protocol</a> &gt; <span class="el_source">RocketMQSerializable.java</span></div><h1>RocketMQSerializable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.remoting.protocol;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+
+<span class="nc" id="L25">public class RocketMQSerializable {</span>
+<span class="fc" id="L26">    private static final Charset CHARSET_UTF8 = Charset.forName(&quot;UTF-8&quot;);</span>
+
+    public static byte[] rocketMQProtocolEncode(RemotingCommand cmd) {
+        // String remark
+<span class="fc" id="L30">        byte[] remarkBytes = null;</span>
+<span class="fc" id="L31">        int remarkLen = 0;</span>
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        if (cmd.getRemark() != null &amp;&amp; cmd.getRemark().length() &gt; 0) {</span>
+<span class="fc" id="L33">            remarkBytes = cmd.getRemark().getBytes(CHARSET_UTF8);</span>
+<span class="fc" id="L34">            remarkLen = remarkBytes.length;</span>
+        }
+
+        // HashMap&lt;String, String&gt; extFields
+<span class="fc" id="L38">        byte[] extFieldsBytes = null;</span>
+<span class="fc" id="L39">        int extLen = 0;</span>
+<span class="pc bpc" id="L40" title="1 of 4 branches missed.">        if (cmd.getExtFields() != null &amp;&amp; !cmd.getExtFields().isEmpty()) {</span>
+<span class="fc" id="L41">            extFieldsBytes = mapSerialize(cmd.getExtFields());</span>
+<span class="fc" id="L42">            extLen = extFieldsBytes.length;</span>
+        }
+
+<span class="fc" id="L45">        int totalLen = calTotalLen(remarkLen, extLen);</span>
+
+<span class="fc" id="L47">        ByteBuffer headerBuffer = ByteBuffer.allocate(totalLen);</span>
+        // int code(~32767)
+<span class="fc" id="L49">        headerBuffer.putShort((short) cmd.getCode());</span>
+        // LanguageCode language
+<span class="fc" id="L51">        headerBuffer.put(cmd.getLanguage().getCode());</span>
+        // int version(~32767)
+<span class="fc" id="L53">        headerBuffer.putShort((short) cmd.getVersion());</span>
+        // int opaque
+<span class="fc" id="L55">        headerBuffer.putInt(cmd.getOpaque());</span>
+        // int flag
+<span class="fc" id="L57">        headerBuffer.putInt(cmd.getFlag());</span>
+        // String remark
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (remarkBytes != null) {</span>
+<span class="fc" id="L60">            headerBuffer.putInt(remarkBytes.length);</span>
+<span class="fc" id="L61">            headerBuffer.put(remarkBytes);</span>
+        } else {
+<span class="fc" id="L63">            headerBuffer.putInt(0);</span>
+        }
+        // HashMap&lt;String, String&gt; extFields;
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (extFieldsBytes != null) {</span>
+<span class="fc" id="L67">            headerBuffer.putInt(extFieldsBytes.length);</span>
+<span class="fc" id="L68">            headerBuffer.put(extFieldsBytes);</span>
+        } else {
+<span class="fc" id="L70">            headerBuffer.putInt(0);</span>
+        }
+
+<span class="fc" id="L73">        return headerBuffer.array();</span>
+    }
+
+    public static byte[] mapSerialize(HashMap&lt;String, String&gt; map) {
+        // keySize+key+valSize+val
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">        if (null == map || map.isEmpty())</span>
+<span class="nc" id="L79">            return null;</span>
+
+<span class="fc" id="L81">        int totalLength = 0;</span>
+        int kvLength;
+<span class="fc" id="L83">        Iterator&lt;Map.Entry&lt;String, String&gt;&gt; it = map.entrySet().iterator();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L85">            Map.Entry&lt;String, String&gt; entry = it.next();</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">            if (entry.getKey() != null &amp;&amp; entry.getValue() != null) {</span>
+<span class="fc" id="L87">                kvLength =</span>
+                    // keySize + Key
+<span class="fc" id="L89">                    2 + entry.getKey().getBytes(CHARSET_UTF8).length</span>
+                        // valSize + val
+<span class="fc" id="L91">                        + 4 + entry.getValue().getBytes(CHARSET_UTF8).length;</span>
+<span class="fc" id="L92">                totalLength += kvLength;</span>
+            }
+<span class="fc" id="L94">        }</span>
+
+<span class="fc" id="L96">        ByteBuffer content = ByteBuffer.allocate(totalLength);</span>
+        byte[] key;
+        byte[] val;
+<span class="fc" id="L99">        it = map.entrySet().iterator();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L101">            Map.Entry&lt;String, String&gt; entry = it.next();</span>
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">            if (entry.getKey() != null &amp;&amp; entry.getValue() != null) {</span>
+<span class="fc" id="L103">                key = entry.getKey().getBytes(CHARSET_UTF8);</span>
+<span class="fc" id="L104">                val = entry.getValue().getBytes(CHARSET_UTF8);</span>
+
+<span class="fc" id="L106">                content.putShort((short) key.length);</span>
+<span class="fc" id="L107">                content.put(key);</span>
+
+<span class="fc" id="L109">                content.putInt(val.length);</span>
+<span class="fc" id="L110">                content.put(val);</span>
+            }
+<span class="fc" id="L112">        }</span>
+
+<span class="fc" id="L114">        return content.array();</span>
+    }
+
+    private static int calTotalLen(int remark, int ext) {
+        // int code(~32767)
+<span class="fc" id="L119">        int length = 2</span>
+            // LanguageCode language
+            + 1
+            // int version(~32767)
+            + 2
+            // int opaque
+            + 4
+            // int flag
+            + 4
+            // String remark
+            + 4 + remark
+            // HashMap&lt;String, String&gt; extFields
+            + 4 + ext;
+
+<span class="fc" id="L133">        return length;</span>
+    }
+
+    public static RemotingCommand rocketMQProtocolDecode(final byte[] headerArray) {
+<span class="fc" id="L137">        RemotingCommand cmd = new RemotingCommand();</span>
+<span class="fc" id="L138">        ByteBuffer headerBuffer = ByteBuffer.wrap(headerArray);</span>
+        // int code(~32767)
+<span class="fc" id="L140">        cmd.setCode(headerBuffer.getShort());</span>
+        // LanguageCode language
+<span class="fc" id="L142">        cmd.setLanguage(LanguageCode.valueOf(headerBuffer.get()));</span>
+        // int version(~32767)
+<span class="fc" id="L144">        cmd.setVersion(headerBuffer.getShort());</span>
+        // int opaque
+<span class="fc" id="L146">        cmd.setOpaque(headerBuffer.getInt());</span>
+        // int flag
+<span class="fc" id="L148">        cmd.setFlag(headerBuffer.getInt());</span>
+        // String remark
+<span class="fc" id="L150">        int remarkLength = headerBuffer.getInt();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (remarkLength &gt; 0) {</span>
+<span class="fc" id="L152">            byte[] remarkContent = new byte[remarkLength];</span>
+<span class="fc" id="L153">            headerBuffer.get(remarkContent);</span>
+<span class="fc" id="L154">            cmd.setRemark(new String(remarkContent, CHARSET_UTF8));</span>
+        }
+
+        // HashMap&lt;String, String&gt; extFields
+<span class="fc" id="L158">        int extFieldsLength = headerBuffer.getInt();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (extFieldsLength &gt; 0) {</span>
+<span class="fc" id="L160">            byte[] extFieldsBytes = new byte[extFieldsLength];</span>
+<span class="fc" id="L161">            headerBuffer.get(extFieldsBytes);</span>
+<span class="fc" id="L162">            cmd.setExtFields(mapDeserialize(extFieldsBytes));</span>
+        }
+<span class="fc" id="L164">        return cmd;</span>
+    }
+
+    public static HashMap&lt;String, String&gt; mapDeserialize(byte[] bytes) {
+<span class="pc bpc" id="L168" title="2 of 4 branches missed.">        if (bytes == null || bytes.length &lt;= 0)</span>
+<span class="nc" id="L169">            return null;</span>
+
+<span class="fc" id="L171">        HashMap&lt;String, String&gt; map = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L172">        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);</span>
+
+        short keySize;
+        byte[] keyContent;
+        int valSize;
+        byte[] valContent;
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        while (byteBuffer.hasRemaining()) {</span>
+<span class="fc" id="L179">            keySize = byteBuffer.getShort();</span>
+<span class="fc" id="L180">            keyContent = new byte[keySize];</span>
+<span class="fc" id="L181">            byteBuffer.get(keyContent);</span>
+
+<span class="fc" id="L183">            valSize = byteBuffer.getInt();</span>
+<span class="fc" id="L184">            valContent = new byte[valSize];</span>
+<span class="fc" id="L185">            byteBuffer.get(valContent);</span>
+
+<span class="fc" id="L187">            map.put(new String(keyContent, CHARSET_UTF8), new String(valContent, CHARSET_UTF8));</span>
+        }
+<span class="fc" id="L189">        return map;</span>
+    }
+
+    public static boolean isBlank(String str) {
+        int strLen;
+<span class="fc bfc" id="L194" title="All 4 branches covered.">        if (str == null || (strLen = str.length()) == 0) {</span>
+<span class="fc" id="L195">            return true;</span>
+        }
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (int i = 0; i &lt; strLen; i++) {</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (!Character.isWhitespace(str.charAt(i))) {</span>
+<span class="fc" id="L199">                return false;</span>
+            }
+        }
+<span class="fc" id="L202">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>

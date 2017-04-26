@@ -1,0 +1,474 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RebalanceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">rocketmq-client 4.1.0-incubating-SNAPSHOT</a> &gt; <a href="index.source.html" class="el_package">org.apache.rocketmq.client.impl.consumer</a> &gt; <span class="el_source">RebalanceImpl.java</span></div><h1>RebalanceImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.client.impl.consumer;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.apache.rocketmq.client.consumer.AllocateMessageQueueStrategy;
+import org.apache.rocketmq.client.impl.FindBrokerResult;
+import org.apache.rocketmq.client.impl.factory.MQClientInstance;
+import org.apache.rocketmq.client.log.ClientLogger;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.body.LockBatchRequestBody;
+import org.apache.rocketmq.common.protocol.body.UnlockBatchRequestBody;
+import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
+import org.slf4j.Logger;
+
+/**
+ * Base class for rebalance algorithm
+ */
+public abstract class RebalanceImpl {
+<span class="fc" id="L46">    protected static final Logger log = ClientLogger.getLog();</span>
+<span class="fc" id="L47">    protected final ConcurrentHashMap&lt;MessageQueue, ProcessQueue&gt; processQueueTable = new ConcurrentHashMap&lt;MessageQueue, ProcessQueue&gt;(64);</span>
+<span class="fc" id="L48">    protected final ConcurrentHashMap&lt;String/* topic */, Set&lt;MessageQueue&gt;&gt; topicSubscribeInfoTable =</span>
+        new ConcurrentHashMap&lt;String, Set&lt;MessageQueue&gt;&gt;();
+<span class="fc" id="L50">    protected final ConcurrentHashMap&lt;String /* topic */, SubscriptionData&gt; subscriptionInner =</span>
+        new ConcurrentHashMap&lt;String, SubscriptionData&gt;();
+    protected String consumerGroup;
+    protected MessageModel messageModel;
+    protected AllocateMessageQueueStrategy allocateMessageQueueStrategy;
+    protected MQClientInstance mQClientFactory;
+
+    public RebalanceImpl(String consumerGroup, MessageModel messageModel, AllocateMessageQueueStrategy allocateMessageQueueStrategy,
+<span class="fc" id="L58">        MQClientInstance mQClientFactory) {</span>
+<span class="fc" id="L59">        this.consumerGroup = consumerGroup;</span>
+<span class="fc" id="L60">        this.messageModel = messageModel;</span>
+<span class="fc" id="L61">        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;</span>
+<span class="fc" id="L62">        this.mQClientFactory = mQClientFactory;</span>
+<span class="fc" id="L63">    }</span>
+
+    public void unlock(final MessageQueue mq, final boolean oneway) {
+<span class="nc" id="L66">        FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (findBrokerResult != null) {</span>
+<span class="nc" id="L68">            UnlockBatchRequestBody requestBody = new UnlockBatchRequestBody();</span>
+<span class="nc" id="L69">            requestBody.setConsumerGroup(this.consumerGroup);</span>
+<span class="nc" id="L70">            requestBody.setClientId(this.mQClientFactory.getClientId());</span>
+<span class="nc" id="L71">            requestBody.getMqSet().add(mq);</span>
+
+            try {
+<span class="nc" id="L74">                this.mQClientFactory.getMQClientAPIImpl().unlockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000, oneway);</span>
+<span class="nc" id="L75">                log.warn(&quot;unlock messageQueue. group:{}, clientId:{}, mq:{}&quot;, //</span>
+                    this.consumerGroup, //
+<span class="nc" id="L77">                    this.mQClientFactory.getClientId(), //</span>
+                    mq);
+<span class="nc" id="L79">            } catch (Exception e) {</span>
+<span class="nc" id="L80">                log.error(&quot;unlockBatchMQ exception, &quot; + mq, e);</span>
+<span class="nc" id="L81">            }</span>
+        }
+<span class="nc" id="L83">    }</span>
+
+    public void unlockAll(final boolean oneway) {
+<span class="fc" id="L86">        HashMap&lt;String, Set&lt;MessageQueue&gt;&gt; brokerMqs = this.buildProcessQueueTableByBrokerName();</span>
+
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        for (final Map.Entry&lt;String, Set&lt;MessageQueue&gt;&gt; entry : brokerMqs.entrySet()) {</span>
+<span class="nc" id="L89">            final String brokerName = entry.getKey();</span>
+<span class="nc" id="L90">            final Set&lt;MessageQueue&gt; mqs = entry.getValue();</span>
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (mqs.isEmpty())</span>
+<span class="nc" id="L93">                continue;</span>
+
+<span class="nc" id="L95">            FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (findBrokerResult != null) {</span>
+<span class="nc" id="L97">                UnlockBatchRequestBody requestBody = new UnlockBatchRequestBody();</span>
+<span class="nc" id="L98">                requestBody.setConsumerGroup(this.consumerGroup);</span>
+<span class="nc" id="L99">                requestBody.setClientId(this.mQClientFactory.getClientId());</span>
+<span class="nc" id="L100">                requestBody.setMqSet(mqs);</span>
+
+                try {
+<span class="nc" id="L103">                    this.mQClientFactory.getMQClientAPIImpl().unlockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000, oneway);</span>
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                    for (MessageQueue mq : mqs) {</span>
+<span class="nc" id="L106">                        ProcessQueue processQueue = this.processQueueTable.get(mq);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                        if (processQueue != null) {</span>
+<span class="nc" id="L108">                            processQueue.setLocked(false);</span>
+<span class="nc" id="L109">                            log.info(&quot;the message queue unlock OK, Group: {} {}&quot;, this.consumerGroup, mq);</span>
+                        }
+<span class="nc" id="L111">                    }</span>
+<span class="nc" id="L112">                } catch (Exception e) {</span>
+<span class="nc" id="L113">                    log.error(&quot;unlockBatchMQ exception, &quot; + mqs, e);</span>
+<span class="nc" id="L114">                }</span>
+            }
+<span class="nc" id="L116">        }</span>
+<span class="fc" id="L117">    }</span>
+
+    private HashMap&lt;String/* brokerName */, Set&lt;MessageQueue&gt;&gt; buildProcessQueueTableByBrokerName() {
+<span class="fc" id="L120">        HashMap&lt;String, Set&lt;MessageQueue&gt;&gt; result = new HashMap&lt;String, Set&lt;MessageQueue&gt;&gt;();</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        for (MessageQueue mq : this.processQueueTable.keySet()) {</span>
+<span class="nc" id="L122">            Set&lt;MessageQueue&gt; mqs = result.get(mq.getBrokerName());</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (null == mqs) {</span>
+<span class="nc" id="L124">                mqs = new HashSet&lt;MessageQueue&gt;();</span>
+<span class="nc" id="L125">                result.put(mq.getBrokerName(), mqs);</span>
+            }
+
+<span class="nc" id="L128">            mqs.add(mq);</span>
+<span class="nc" id="L129">        }</span>
+
+<span class="fc" id="L131">        return result;</span>
+    }
+
+    public boolean lock(final MessageQueue mq) {
+<span class="fc" id="L135">        FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (findBrokerResult != null) {</span>
+<span class="fc" id="L137">            LockBatchRequestBody requestBody = new LockBatchRequestBody();</span>
+<span class="fc" id="L138">            requestBody.setConsumerGroup(this.consumerGroup);</span>
+<span class="fc" id="L139">            requestBody.setClientId(this.mQClientFactory.getClientId());</span>
+<span class="fc" id="L140">            requestBody.getMqSet().add(mq);</span>
+
+            try {
+<span class="fc" id="L143">                Set&lt;MessageQueue&gt; lockedMq =</span>
+<span class="fc" id="L144">                    this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">                for (MessageQueue mmqq : lockedMq) {</span>
+<span class="nc" id="L146">                    ProcessQueue processQueue = this.processQueueTable.get(mmqq);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                    if (processQueue != null) {</span>
+<span class="nc" id="L148">                        processQueue.setLocked(true);</span>
+<span class="nc" id="L149">                        processQueue.setLastLockTimestamp(System.currentTimeMillis());</span>
+                    }
+<span class="nc" id="L151">                }</span>
+
+<span class="fc" id="L153">                boolean lockOK = lockedMq.contains(mq);</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                log.info(&quot;the message queue lock {}, {} {}&quot;,</span>
+                    lockOK ? &quot;OK&quot; : &quot;Failed&quot;,
+                    this.consumerGroup,
+                    mq);
+<span class="fc" id="L158">                return lockOK;</span>
+<span class="nc" id="L159">            } catch (Exception e) {</span>
+<span class="nc" id="L160">                log.error(&quot;lockBatchMQ exception, &quot; + mq, e);</span>
+            }
+        }
+
+<span class="nc" id="L164">        return false;</span>
+    }
+
+    public void lockAll() {
+<span class="nc" id="L168">        HashMap&lt;String, Set&lt;MessageQueue&gt;&gt; brokerMqs = this.buildProcessQueueTableByBrokerName();</span>
+
+<span class="nc" id="L170">        Iterator&lt;Entry&lt;String, Set&lt;MessageQueue&gt;&gt;&gt; it = brokerMqs.entrySet().iterator();</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L172">            Entry&lt;String, Set&lt;MessageQueue&gt;&gt; entry = it.next();</span>
+<span class="nc" id="L173">            final String brokerName = entry.getKey();</span>
+<span class="nc" id="L174">            final Set&lt;MessageQueue&gt; mqs = entry.getValue();</span>
+
+<span class="nc bnc" id="L176" title="All 2 branches missed.">            if (mqs.isEmpty())</span>
+<span class="nc" id="L177">                continue;</span>
+
+<span class="nc" id="L179">            FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">            if (findBrokerResult != null) {</span>
+<span class="nc" id="L181">                LockBatchRequestBody requestBody = new LockBatchRequestBody();</span>
+<span class="nc" id="L182">                requestBody.setConsumerGroup(this.consumerGroup);</span>
+<span class="nc" id="L183">                requestBody.setClientId(this.mQClientFactory.getClientId());</span>
+<span class="nc" id="L184">                requestBody.setMqSet(mqs);</span>
+
+                try {
+<span class="nc" id="L187">                    Set&lt;MessageQueue&gt; lockOKMQSet =</span>
+<span class="nc" id="L188">                        this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);</span>
+
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                    for (MessageQueue mq : lockOKMQSet) {</span>
+<span class="nc" id="L191">                        ProcessQueue processQueue = this.processQueueTable.get(mq);</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">                        if (processQueue != null) {</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                            if (!processQueue.isLocked()) {</span>
+<span class="nc" id="L194">                                log.info(&quot;the message queue locked OK, Group: {} {}&quot;, this.consumerGroup, mq);</span>
+                            }
+
+<span class="nc" id="L197">                            processQueue.setLocked(true);</span>
+<span class="nc" id="L198">                            processQueue.setLastLockTimestamp(System.currentTimeMillis());</span>
+                        }
+<span class="nc" id="L200">                    }</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                    for (MessageQueue mq : mqs) {</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">                        if (!lockOKMQSet.contains(mq)) {</span>
+<span class="nc" id="L203">                            ProcessQueue processQueue = this.processQueueTable.get(mq);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                            if (processQueue != null) {</span>
+<span class="nc" id="L205">                                processQueue.setLocked(false);</span>
+<span class="nc" id="L206">                                log.warn(&quot;the message queue locked Failed, Group: {} {}&quot;, this.consumerGroup, mq);</span>
+                            }
+                        }
+<span class="nc" id="L209">                    }</span>
+<span class="nc" id="L210">                } catch (Exception e) {</span>
+<span class="nc" id="L211">                    log.error(&quot;lockBatchMQ exception, &quot; + mqs, e);</span>
+<span class="nc" id="L212">                }</span>
+            }
+<span class="nc" id="L214">        }</span>
+<span class="nc" id="L215">    }</span>
+
+    public void doRebalance(final boolean isOrder) {
+<span class="fc" id="L218">        Map&lt;String, SubscriptionData&gt; subTable = this.getSubscriptionInner();</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (subTable != null) {</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            for (final Map.Entry&lt;String, SubscriptionData&gt; entry : subTable.entrySet()) {</span>
+<span class="fc" id="L221">                final String topic = entry.getKey();</span>
+                try {
+<span class="fc" id="L223">                    this.rebalanceByTopic(topic, isOrder);</span>
+<span class="nc" id="L224">                } catch (Throwable e) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                    if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {</span>
+<span class="nc" id="L226">                        log.warn(&quot;rebalanceByTopic Exception&quot;, e);</span>
+                    }
+<span class="fc" id="L228">                }</span>
+<span class="fc" id="L229">            }</span>
+        }
+
+<span class="fc" id="L232">        this.truncateMessageQueueNotMyTopic();</span>
+<span class="fc" id="L233">    }</span>
+
+    public ConcurrentHashMap&lt;String, SubscriptionData&gt; getSubscriptionInner() {
+<span class="fc" id="L236">        return subscriptionInner;</span>
+    }
+
+    private void rebalanceByTopic(final String topic, final boolean isOrder) {
+<span class="pc bpc" id="L240" title="2 of 3 branches missed.">        switch (messageModel) {</span>
+            case BROADCASTING: {
+<span class="nc" id="L242">                Set&lt;MessageQueue&gt; mqSet = this.topicSubscribeInfoTable.get(topic);</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                if (mqSet != null) {</span>
+<span class="nc" id="L244">                    boolean changed = this.updateProcessQueueTableInRebalance(topic, mqSet, isOrder);</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                    if (changed) {</span>
+<span class="nc" id="L246">                        this.messageQueueChanged(topic, mqSet, mqSet);</span>
+<span class="nc" id="L247">                        log.info(&quot;messageQueueChanged {} {} {} {}&quot;, //</span>
+                            consumerGroup, //
+                            topic, //
+                            mqSet, //
+                            mqSet);
+                    }
+<span class="nc" id="L253">                } else {</span>
+<span class="nc" id="L254">                    log.warn(&quot;doRebalance, {}, but the topic[{}] not exist.&quot;, consumerGroup, topic);</span>
+                }
+<span class="nc" id="L256">                break;</span>
+            }
+            case CLUSTERING: {
+<span class="fc" id="L259">                Set&lt;MessageQueue&gt; mqSet = this.topicSubscribeInfoTable.get(topic);</span>
+<span class="fc" id="L260">                List&lt;String&gt; cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                if (null == mqSet) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                    if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {</span>
+<span class="fc" id="L263">                        log.warn(&quot;doRebalance, {}, but the topic[{}] not exist.&quot;, consumerGroup, topic);</span>
+                    }
+                }
+
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                if (null == cidAll) {</span>
+<span class="fc" id="L268">                    log.warn(&quot;doRebalance, {} {}, get consumer id list failed&quot;, consumerGroup, topic);</span>
+                }
+
+<span class="pc bpc" id="L271" title="1 of 4 branches missed.">                if (mqSet != null &amp;&amp; cidAll != null) {</span>
+<span class="fc" id="L272">                    List&lt;MessageQueue&gt; mqAll = new ArrayList&lt;MessageQueue&gt;();</span>
+<span class="fc" id="L273">                    mqAll.addAll(mqSet);</span>
+
+<span class="fc" id="L275">                    Collections.sort(mqAll);</span>
+<span class="fc" id="L276">                    Collections.sort(cidAll);</span>
+
+<span class="fc" id="L278">                    AllocateMessageQueueStrategy strategy = this.allocateMessageQueueStrategy;</span>
+
+<span class="fc" id="L280">                    List&lt;MessageQueue&gt; allocateResult = null;</span>
+                    try {
+<span class="fc" id="L282">                        allocateResult = strategy.allocate(//</span>
+                            this.consumerGroup, //
+<span class="fc" id="L284">                            this.mQClientFactory.getClientId(), //</span>
+                            mqAll, //
+                            cidAll);
+<span class="nc" id="L287">                    } catch (Throwable e) {</span>
+<span class="nc" id="L288">                        log.error(&quot;AllocateMessageQueueStrategy.allocate Exception. allocateMessageQueueStrategyName={}&quot;, strategy.getName(),</span>
+                            e);
+<span class="nc" id="L290">                        return;</span>
+<span class="fc" id="L291">                    }</span>
+
+<span class="fc" id="L293">                    Set&lt;MessageQueue&gt; allocateResultSet = new HashSet&lt;MessageQueue&gt;();</span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">                    if (allocateResult != null) {</span>
+<span class="fc" id="L295">                        allocateResultSet.addAll(allocateResult);</span>
+                    }
+
+<span class="fc" id="L298">                    boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">                    if (changed) {</span>
+<span class="fc" id="L300">                        log.info(</span>
+                            &quot;rebalanced result changed. allocateMessageQueueStrategyName={}, group={}, topic={}, clientId={}, mqAllSize={}, cidAllSize={}, rebalanceResultSize={}, rebalanceResultSet={}&quot;,
+<span class="fc" id="L302">                            strategy.getName(), consumerGroup, topic, this.mQClientFactory.getClientId(), mqSet.size(), cidAll.size(),</span>
+<span class="fc" id="L303">                            allocateResultSet.size(), allocateResultSet);</span>
+<span class="fc" id="L304">                        this.messageQueueChanged(topic, mqSet, allocateResultSet);</span>
+                    }
+<span class="fc" id="L306">                }</span>
+                break;
+            }
+            default:
+                break;
+        }
+<span class="fc" id="L312">    }</span>
+
+    private void truncateMessageQueueNotMyTopic() {
+<span class="fc" id="L315">        Map&lt;String, SubscriptionData&gt; subTable = this.getSubscriptionInner();</span>
+
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        for (MessageQueue mq : this.processQueueTable.keySet()) {</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            if (!subTable.containsKey(mq.getTopic())) {</span>
+
+<span class="nc" id="L320">                ProcessQueue pq = this.processQueueTable.remove(mq);</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">                if (pq != null) {</span>
+<span class="nc" id="L322">                    pq.setDropped(true);</span>
+<span class="nc" id="L323">                    log.info(&quot;doRebalance, {}, truncateMessageQueueNotMyTopic remove unnecessary mq, {}&quot;, consumerGroup, mq);</span>
+                }
+            }
+<span class="fc" id="L326">        }</span>
+<span class="fc" id="L327">    }</span>
+
+    private boolean updateProcessQueueTableInRebalance(final String topic, final Set&lt;MessageQueue&gt; mqSet, final boolean isOrder) {
+<span class="fc" id="L330">        boolean changed = false;</span>
+
+<span class="fc" id="L332">        Iterator&lt;Entry&lt;MessageQueue, ProcessQueue&gt;&gt; it = this.processQueueTable.entrySet().iterator();</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L334">            Entry&lt;MessageQueue, ProcessQueue&gt; next = it.next();</span>
+<span class="nc" id="L335">            MessageQueue mq = next.getKey();</span>
+<span class="nc" id="L336">            ProcessQueue pq = next.getValue();</span>
+
+<span class="nc bnc" id="L338" title="All 2 branches missed.">            if (mq.getTopic().equals(topic)) {</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                if (!mqSet.contains(mq)) {</span>
+<span class="nc" id="L340">                    pq.setDropped(true);</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">                    if (this.removeUnnecessaryMessageQueue(mq, pq)) {</span>
+<span class="nc" id="L342">                        it.remove();</span>
+<span class="nc" id="L343">                        changed = true;</span>
+<span class="nc" id="L344">                        log.info(&quot;doRebalance, {}, remove unnecessary mq, {}&quot;, consumerGroup, mq);</span>
+                    }
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                } else if (pq.isPullExpired()) {</span>
+<span class="pc bnc" id="L347" title="All 3 branches missed.">                    switch (this.consumeType()) {</span>
+                        case CONSUME_ACTIVELY:
+<span class="nc" id="L349">                            break;</span>
+                        case CONSUME_PASSIVELY:
+<span class="nc" id="L351">                            pq.setDropped(true);</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">                            if (this.removeUnnecessaryMessageQueue(mq, pq)) {</span>
+<span class="nc" id="L353">                                it.remove();</span>
+<span class="nc" id="L354">                                changed = true;</span>
+<span class="nc" id="L355">                                log.error(&quot;[BUG]doRebalance, {}, remove unnecessary mq, {}, because pull is pause, so try to fixed it&quot;,</span>
+                                    consumerGroup, mq);
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+<span class="nc" id="L364">        }</span>
+
+<span class="fc" id="L366">        List&lt;PullRequest&gt; pullRequestList = new ArrayList&lt;PullRequest&gt;();</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">        for (MessageQueue mq : mqSet) {</span>
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">            if (!this.processQueueTable.containsKey(mq)) {</span>
+<span class="pc bpc" id="L369" title="1 of 4 branches missed.">                if (isOrder &amp;&amp; !this.lock(mq)) {</span>
+<span class="fc" id="L370">                    log.warn(&quot;doRebalance, {}, add a new mq failed, {}, because lock failed&quot;, consumerGroup, mq);</span>
+<span class="fc" id="L371">                    continue;</span>
+                }
+
+<span class="fc" id="L374">                this.removeDirtyOffset(mq);</span>
+<span class="fc" id="L375">                ProcessQueue pq = new ProcessQueue();</span>
+<span class="fc" id="L376">                long nextOffset = this.computePullFromWhere(mq);</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">                if (nextOffset &gt;= 0) {</span>
+<span class="fc" id="L378">                    ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">                    if (pre != null) {</span>
+<span class="nc" id="L380">                        log.info(&quot;doRebalance, {}, mq already exists, {}&quot;, consumerGroup, mq);</span>
+                    } else {
+<span class="fc" id="L382">                        log.info(&quot;doRebalance, {}, add a new mq, {}&quot;, consumerGroup, mq);</span>
+<span class="fc" id="L383">                        PullRequest pullRequest = new PullRequest();</span>
+<span class="fc" id="L384">                        pullRequest.setConsumerGroup(consumerGroup);</span>
+<span class="fc" id="L385">                        pullRequest.setNextOffset(nextOffset);</span>
+<span class="fc" id="L386">                        pullRequest.setMessageQueue(mq);</span>
+<span class="fc" id="L387">                        pullRequest.setProcessQueue(pq);</span>
+<span class="fc" id="L388">                        pullRequestList.add(pullRequest);</span>
+<span class="fc" id="L389">                        changed = true;</span>
+                    }
+<span class="fc" id="L391">                } else {</span>
+<span class="nc" id="L392">                    log.warn(&quot;doRebalance, {}, add new mq failed, {}&quot;, consumerGroup, mq);</span>
+                }
+            }
+<span class="fc" id="L395">        }</span>
+
+<span class="fc" id="L397">        this.dispatchPullRequest(pullRequestList);</span>
+
+<span class="fc" id="L399">        return changed;</span>
+    }
+
+    public abstract void messageQueueChanged(final String topic, final Set&lt;MessageQueue&gt; mqAll, final Set&lt;MessageQueue&gt; mqDivided);
+
+    public abstract boolean removeUnnecessaryMessageQueue(final MessageQueue mq, final ProcessQueue pq);
+
+    public abstract ConsumeType consumeType();
+
+    public abstract void removeDirtyOffset(final MessageQueue mq);
+
+    public abstract long computePullFromWhere(final MessageQueue mq);
+
+    public abstract void dispatchPullRequest(final List&lt;PullRequest&gt; pullRequestList);
+
+    public void removeProcessQueue(final MessageQueue mq) {
+<span class="nc" id="L415">        ProcessQueue prev = this.processQueueTable.remove(mq);</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        if (prev != null) {</span>
+<span class="nc" id="L417">            boolean droped = prev.isDropped();</span>
+<span class="nc" id="L418">            prev.setDropped(true);</span>
+<span class="nc" id="L419">            this.removeUnnecessaryMessageQueue(mq, prev);</span>
+<span class="nc" id="L420">            log.info(&quot;Fix Offset, {}, remove unnecessary mq, {} Droped: {}&quot;, consumerGroup, mq, droped);</span>
+        }
+<span class="nc" id="L422">    }</span>
+
+    public ConcurrentHashMap&lt;MessageQueue, ProcessQueue&gt; getProcessQueueTable() {
+<span class="fc" id="L425">        return processQueueTable;</span>
+    }
+
+    public ConcurrentHashMap&lt;String, Set&lt;MessageQueue&gt;&gt; getTopicSubscribeInfoTable() {
+<span class="nc" id="L429">        return topicSubscribeInfoTable;</span>
+    }
+
+    public String getConsumerGroup() {
+<span class="nc" id="L433">        return consumerGroup;</span>
+    }
+
+    public void setConsumerGroup(String consumerGroup) {
+<span class="fc" id="L437">        this.consumerGroup = consumerGroup;</span>
+<span class="fc" id="L438">    }</span>
+
+    public MessageModel getMessageModel() {
+<span class="nc" id="L441">        return messageModel;</span>
+    }
+
+    public void setMessageModel(MessageModel messageModel) {
+<span class="fc" id="L445">        this.messageModel = messageModel;</span>
+<span class="fc" id="L446">    }</span>
+
+    public AllocateMessageQueueStrategy getAllocateMessageQueueStrategy() {
+<span class="nc" id="L449">        return allocateMessageQueueStrategy;</span>
+    }
+
+    public void setAllocateMessageQueueStrategy(AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
+<span class="fc" id="L453">        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;</span>
+<span class="fc" id="L454">    }</span>
+
+    public MQClientInstance getmQClientFactory() {
+<span class="nc" id="L457">        return mQClientFactory;</span>
+    }
+
+    public void setmQClientFactory(MQClientInstance mQClientFactory) {
+<span class="fc" id="L461">        this.mQClientFactory = mQClientFactory;</span>
+<span class="fc" id="L462">    }</span>
+
+    public void destroy() {
+<span class="fc" id="L465">        Iterator&lt;Entry&lt;MessageQueue, ProcessQueue&gt;&gt; it = this.processQueueTable.entrySet().iterator();</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L467">            Entry&lt;MessageQueue, ProcessQueue&gt; next = it.next();</span>
+<span class="fc" id="L468">            next.getValue().setDropped(true);</span>
+<span class="fc" id="L469">        }</span>
+
+<span class="fc" id="L471">        this.processQueueTable.clear();</span>
+<span class="fc" id="L472">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.8.201612092310</span></div></body></html>
